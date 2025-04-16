@@ -23,6 +23,12 @@ spring:
       chat:
         model: gpt-4o
 
+  # Redis 설정
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+
 # Swagger 보안 해제 (dev only)
 springdoc:
   swagger-ui:
