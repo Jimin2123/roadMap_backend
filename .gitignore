@@ -42,3 +42,10 @@ src/**/*.yml
 !src/main/resources/application.yml
 .env*
 !/.env.exam
+
+
+### Docker ###
+
+# Redis
+/docker/redis/data
+docker/redis/log
