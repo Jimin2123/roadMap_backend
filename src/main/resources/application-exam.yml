@@ -1,0 +1,29 @@
+spring:
+  # MariaDB JDBC 설정
+  datasource:
+    url: jdbc:mariadb://localhost:3306/${DB_NAME}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.mariadb.jdbc.Driver
+
+  # Spring Boot의 JPA 설정
+  jpa:
+    hibernate:
+      ddl-auto: update # 테이블 자동 생성 전략 (update는 기존 테이블 유지 + 변경사항 자동 반영)
+    show-sql: true # 콘솔에 실행되는 SQL 쿼리를 출력 (디버깅에 유용)
+    properties:
+      hibernate:
+        format_sql: true # SQL 출력 시 보기 좋게 포맷팅
+
+  # Spring AI 설정
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      base-url: https://api.openai.com
+      chat:
+        model: gpt-4o
+
+# Swagger 보안 해제 (dev only)
+springdoc:
+  swagger-ui:
+    enabled: true

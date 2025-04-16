@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: RoadMap
+
+  profiles:
+    active: dev
+
+  servlet:
+    multipart:
+      max-file-size: 10MB # 업로드 가능한 파일의 최대 크기 설정
+      max-request-size: 10MB # 한 요청에서 업로드 가능한 전체 파일 용량 제한
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO # 전체 로그 레벨을 INFO로 설정
+    org.springframework.web: DEBUG # 웹 관련 로깅은 DEBUG 레벨로 설정 (HTTP 요청/응답 등 상세 보기)
+
+springdoc:
+  swagger-ui:
+    path: /api-docs
+    operationsSorter: alpha # API 메서드들을 알파벳 순으로 정렬
+    tagsSorter: alpha # API 태그들을 알파벳 순으로 정렬
+    display-request-duration: true # 요청 응답 시간 표시 여부
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*" # Actuator의 모든 엔드포인트를 외부에 노출 (주의: 운영 환경에서는 제한 필요)
+  endpoint:
+    health:
+      show-details: always # `/actuator/health`에서 상세 상태 정보를 항상 보여줌
