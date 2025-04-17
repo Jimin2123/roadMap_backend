@@ -41,11 +41,11 @@ src/**/*.yml
 !src/main/resources/application-exam.yml
 !src/main/resources/application.yml
 .env*
-!/.env.exam
+!.env.exam
 
 
 ### Docker ###
 
 # Redis
-/docker/redis/data
+docker/redis/data
 docker/redis/log
