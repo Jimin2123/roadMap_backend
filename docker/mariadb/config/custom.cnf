@@ -1,0 +1,21 @@
+[mysqld]
+# 문자셋 및 collation 설정
+character-set-server = utf8mb4
+collation-server = utf8mb4_general_ci
+
+# 기본 인증 유저 host 범위 확대 (localhost 외 접속 허용)
+bind-address = 0.0.0.0
+
+# 에러 로그 파일
+log-error = /var/log/mysql/error.log
+
+# 슬로우 쿼리 로그 (성능 개선 체크용)
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 1
+
+# 최대 연결 수 증가 (개발 시 여러 툴 연결 대응)
+max_connections = 200
+
+# 시간대 설정 (서버 및 DB 일치)
+default_time_zone = '+09:00'

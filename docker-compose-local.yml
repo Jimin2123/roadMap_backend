@@ -1,8 +1,11 @@
+# docker 설정 명령어
+# docker-compose -f docker-compose-local.yml --env-file .env.dev up -d
+
 version: '3.8'
 services:
   redis:
     image: redis:latest
-    container_name: redis
+    container_name: redis-local
     restart: always
     ports:
       - '6379:6379' # Redis 기본 포트
@@ -11,3 +14,19 @@ services:
       - ./docker/redis/data:/data
       - ./docker/redis/log:/var/log/redis
     command: ['redis-server', '/usr/local/etc/redis/redis.conf']
+
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb-local
+    restart: always
+    ports:
+      - "${DB_PORT}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./docker/mariadb/config:/etc/mysql/conf.d    # 커스텀 설정파일
+      - ./docker/mariadb/data:/var/lib/mysql         # DB 데이터
+      - ./docker/mariadb/log:/var/log/mysql          # 로그 저장

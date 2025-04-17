@@ -49,3 +49,7 @@ src/**/*.yml
 # Redis
 docker/redis/data
 docker/redis/log
+
+# MariadDB
+docker/mariadb/data
+docker/mariadb/log

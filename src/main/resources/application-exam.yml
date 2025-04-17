@@ -1,8 +1,8 @@
 spring:
   # MariaDB JDBC 설정
   datasource:
-    url: jdbc:mariadb://localhost:3306/${DB_NAME}
-    username: ${DB_USERNAME}
+    url: jdbc:mariadb://localhost:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
     password: ${DB_PASSWORD}
     driver-class-name: org.mariadb.jdbc.Driver
 
@@ -32,4 +32,4 @@ spring:
 # Swagger 보안 해제 (dev only)
 springdoc:
   swagger-ui:
-    enabled: true
+    enabled: true # Swagger UI 활성화
