@@ -30,7 +30,7 @@ public class Member extends BaseEntity {
     @ElementCollection
     @CollectionTable(name = "member_certificate", joinColumns = @JoinColumn(name = "member_id"))
     @Column(name = "certificate")
-    private Set<String> certificates = new HashSet<>();; // 자격증 목록
+    private Set<String> certificates = new HashSet<>(); // 자격증 목록
 
     @ElementCollection
     @CollectionTable(name = "member_ncs", joinColumns = @JoinColumn(name = "member_id"))
