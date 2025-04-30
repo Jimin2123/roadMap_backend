@@ -32,8 +32,8 @@ public record ProfileResponse(
     Profile p = member.getProfile();
     return new ProfileResponse(
             p.getEducationLevel(),
-            p.getMajor(),
             p.getDesiredJob(),
+            p.getMajor(),
             member.getSkills(),
             member.getCertificates(),
             member.getNcsCodes()
