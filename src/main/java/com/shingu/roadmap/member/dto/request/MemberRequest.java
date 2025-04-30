@@ -3,7 +3,7 @@ package com.shingu.roadmap.member.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-import javax.validation.constraints.Pattern;
+import jakarta.validation.constraints.Pattern;
 
 @Schema(description = "회원 등록 요청 DTO")
 public record MemberRequest(
