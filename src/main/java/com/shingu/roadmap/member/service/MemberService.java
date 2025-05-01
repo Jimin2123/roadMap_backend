@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MemberService {
     private final MemberRepository memberRepository;
-    private final OpenAiService openAiService;
 
     @Transactional
     public MemberResponse updateProfile(Long memberId, ProfileRequest request) {
