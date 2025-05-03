@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.service;
 
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
 import com.shingu.roadmap.member.domain.Member;
@@ -34,8 +35,8 @@ public class MemberService {
             Set<String> recommendedNcsCodes= openAiService.recommendNcsCodes(member).block();
 
             if(!CollectionUtils.isEmpty(recommendedNcsCodes)) {
-                Set<String> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
-                member.updateNcsCodes(validCodes);
+                Set<NcsOccupation> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
+                member.updateNcsOccupations(validCodes);
             }
         }
         return MemberResponse.from(member);

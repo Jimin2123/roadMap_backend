@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.domain;
 
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.common.domain.BaseEntity;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import jakarta.persistence.*;
@@ -35,10 +36,13 @@ public class Member extends BaseEntity {
     @Column(name = "certificate")
     private Set<String> certificates = new HashSet<>(); // 자격증 목록
 
-    @ElementCollection
-    @CollectionTable(name = "member_ncs", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "ncs_code")
-    private Set<String> ncsCodes = new HashSet<>(); // 국가직무능력표준 코드 목록
+    @ManyToMany
+    @JoinTable(
+            name = "member_ncs",
+            joinColumns = @JoinColumn(name = "member_id"),
+            inverseJoinColumns = @JoinColumn(name = "ncs_code")
+    )
+    private Set<NcsOccupation> ncsOccupations = new HashSet<>(); // NCS 직무 정보
 
     /**
      * 보유 기술 목록을 초기화 후 등록합니다.
@@ -76,10 +80,8 @@ public class Member extends BaseEntity {
         updateCertificates(request.certificates());
     }
 
-    public void updateNcsCodes(Set<String> ncsCodes) {
-        this.ncsCodes.clear();
-        if (ncsCodes != null) {
-            this.ncsCodes.addAll(ncsCodes);
-        }
+    public void updateNcsOccupations(Set<NcsOccupation> occupations) {
+        this.ncsOccupations.clear();
+        this.ncsOccupations.addAll(occupations);
     }
 }
