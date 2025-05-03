@@ -20,5 +20,5 @@ public class NcsOccupation {
   private String dutySvcNo; // 직무 서비스 번호
 
   @Column(columnDefinition = "TEXT")
-  private String dutySvcNm; // 직무 서비스 명
+  private String dutyDef; // 직무 설명
 }
