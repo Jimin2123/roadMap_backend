@@ -1,11 +1,13 @@
 package com.shingu.roadmap.member.dto.response;
 
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.common.enums.EducationLevelType;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Schema(description = "회원 프로필 응답 DTO")
 public record ProfileResponse(
@@ -28,15 +30,22 @@ public record ProfileResponse(
         @Schema(description = "NCS 코드 목록", example = "[\"NCS_001\", \"NCS_002\"]")
         Set<String> ncsCodes
 ) {
+
   public static ProfileResponse from(Member member) {
     Profile p = member.getProfile();
+
+    Set<String> ncsCodeValues = member.getNcsOccupations()
+            .stream()
+            .map(NcsOccupation::getDutyCd)
+            .collect(Collectors.toSet());
+
     return new ProfileResponse(
             p.getEducationLevel(),
             p.getDesiredJob(),
             p.getMajor(),
             member.getSkills(),
             member.getCertificates(),
-            member.getNcsCodes()
+            ncsCodeValues
     );
   }
 }
