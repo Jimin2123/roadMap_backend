@@ -28,9 +28,7 @@ public class OpenAiService {
             String.join(", ", member.getCertificates())
     );
 
-    String sytemPrompt = "당신은 사용자의 기술 및 자격증을 바탕으로 적절한 NCS 직무 코드를 반환하는 AI입니다." +
-            "가장 관련성 높은 코드부터 우선순위가 높은 순서로 정렬하여 반환하세요. " +
-            "결과는 오직 코드만, 콤마로 구분해서 반환하세요.";
+    String sytemPrompt = "당신은 사용자의 기술 및 자격증을 바탕으로 적절한 NCS 직무 코드를 반환하는 AI입니다. 결과는 오직 코드만, 콤마로 구분해서 반환하세요.";
 
     List<Map<String, String>> messages = List.of(
             Map.of("role", "system", "content", sytemPrompt),
