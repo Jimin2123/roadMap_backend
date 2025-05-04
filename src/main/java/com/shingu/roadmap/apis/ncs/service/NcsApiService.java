@@ -10,6 +10,7 @@ import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
 import com.shingu.roadmap.apis.ncs.repository.NcsTrainingStandardRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -85,15 +86,19 @@ public class NcsApiService {
 
       // 4. 기준 항목 조회 또는 생성
       NcsTrainingStandard standard = ncsTrainingStandardRepository
-              .findByItemCdAndItemNo(stdItem.itemCd(), stdItem.itemNo())
+              .findByDefText(stdItem.defText())
               .orElseGet(() -> {
-                NcsTrainingStandard newStandard = new NcsTrainingStandard(
-                        stdItem.itemCd(),
-                        stdItem.itemName(),
-                        stdItem.itemNo(),
-                        stdItem.defText()
-                );
-                return ncsTrainingStandardRepository.save(newStandard);
+                try {
+                  NcsTrainingStandard newStandard = new NcsTrainingStandard(
+                          stdItem.itemName(),
+                          stdItem.defText()
+                  );
+                  return ncsTrainingStandardRepository.save(newStandard);
+                } catch (DataIntegrityViolationException e) {
+                  // 누군가 먼저 저장한 경우 → 다시 조회
+                  return ncsTrainingStandardRepository.findByDefText(stdItem.defText())
+                          .orElseThrow(() -> new IllegalStateException("중복 저장 후 재조회 실패"));
+                }
               });
       // 5. 중복 연결 방지 및 양방향 관계 설정
       if (ncsOccupation.hasTrainingStandard(standard)) continue;

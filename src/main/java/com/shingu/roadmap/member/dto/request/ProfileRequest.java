@@ -1,6 +1,7 @@
 package com.shingu.roadmap.member.dto.request;
 
 import com.shingu.roadmap.common.enums.EducationLevelType;
+import com.shingu.roadmap.member.domain.Profile;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
@@ -22,4 +23,12 @@ public record ProfileRequest(
 
         @Schema(description = "자격증", example = "[\"정보처리기사\", \"JLPT 2급\"]")
         Set<String> certificates
-) {}
+) {
+        public Profile toProfile() {
+                return new Profile(
+                        educationLevel,
+                        major,
+                        desiredJob
+                );
+        }
+}
