@@ -32,7 +32,7 @@ public class MemberService {
 
         if(!CollectionUtils.isEmpty(request.skills()) ||
                 !CollectionUtils.isEmpty(request.certificates())) {
-            Set<String> recommendedNcsCodes= openAiService.recommendNcsCodes(member).block();
+            Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(member).block();
 
             if(!CollectionUtils.isEmpty(recommendedNcsCodes)) {
                 Set<NcsOccupation> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);

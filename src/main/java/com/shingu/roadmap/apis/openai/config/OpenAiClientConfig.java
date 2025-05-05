@@ -18,6 +18,7 @@ public class OpenAiClientConfig {
             .baseUrl(config.getBaseUrl())
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + config.getApiKey())
             .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+            .defaultHeader("OpenAI-Beta", "assistants=v2")
             .build();
   }
 }
