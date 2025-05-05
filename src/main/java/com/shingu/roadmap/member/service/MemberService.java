@@ -7,6 +7,7 @@ import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
+import com.sun.source.doctree.SeeTree;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ public class MemberService {
 
         if(!CollectionUtils.isEmpty(request.skills()) ||
                 !CollectionUtils.isEmpty(request.certificates())) {
-            Set<String> recommendedNcsCodes= openAiService.recommendNcsCodes(member).block();
+            Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(member).block();
 
             if(!CollectionUtils.isEmpty(recommendedNcsCodes)) {
                 Set<NcsOccupation> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
