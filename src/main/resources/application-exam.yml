@@ -34,6 +34,10 @@ springdoc:
   swagger-ui:
     enabled: true # Swagger UI 활성화
 
+work24:
+  traning-cource-url: https://www.work24.go.kr/cm/openApi/call/hr/callOpenApiSvcInfo310L01.do
+  traning-cource-key:
+
 openai:
   api-key: ${OPENAI_API_KEY}
   base-url: https://api.openai.com/v1
