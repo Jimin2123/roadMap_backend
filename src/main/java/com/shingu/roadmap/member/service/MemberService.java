@@ -7,7 +7,6 @@ import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
-import com.sun.source.doctree.SeeTree;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
