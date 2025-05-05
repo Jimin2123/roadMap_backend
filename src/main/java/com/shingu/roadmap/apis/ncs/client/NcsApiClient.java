@@ -4,6 +4,7 @@ import com.shingu.roadmap.apis.ncs.config.NcsApiProperties;
 import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationResponse;
 import com.shingu.roadmap.apis.ncs.dto.response.NcsTrainingStandardResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -11,11 +12,15 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.net.URI;
 
 @Component
-@RequiredArgsConstructor
 public class NcsApiClient {
 
   private final NcsApiProperties ncsApiProperties;
   private final RestClient restClient;
+
+  NcsApiClient(@Qualifier("ncsRestClient") RestClient restClient, NcsApiProperties ncsApiProperties) {
+    this.restClient = restClient;
+    this.ncsApiProperties = ncsApiProperties;
+  }
 
   /**
    * NCS 직무정보 API 호출
