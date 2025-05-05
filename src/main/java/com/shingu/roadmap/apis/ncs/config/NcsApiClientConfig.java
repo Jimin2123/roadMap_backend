@@ -1,5 +1,6 @@
 package com.shingu.roadmap.apis.ncs.config;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,7 @@ import java.security.cert.X509Certificate;
 public class NcsApiClientConfig {
 
   @Bean
+  @Qualifier("ncsRestClient")
   public RestClient ncsRestClient(NcsApiProperties ncsApiProperties) {
     try {
       // 모든 인증서를 신뢰하는 TrustManager 설정
