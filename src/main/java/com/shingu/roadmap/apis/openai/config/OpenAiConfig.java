@@ -23,6 +23,9 @@ public class OpenAiConfig {
   @NotBlank
   private String model;
 
+  @NotBlank
+  private String ncsCodeAssistantId;
+
   @Min(0) @Max(1)
   private double temperature;
 }
