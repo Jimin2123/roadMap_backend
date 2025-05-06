@@ -1,9 +1,15 @@
 package com.shingu.roadmap.apis.openai.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
+import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.member.domain.Member;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -14,36 +20,66 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class OpenAiService {
 
   private final OpenAiClient openAiClient;
+  private final ObjectMapper objectMapper;
 
   /**
-   * 기술 스택과 자격증을 기반으로 NCS 코드 추천
-   * @param member 기술 및 자격증 정보가 포함된 Member 객체
+   * 사용자 정보를 바탕으로 훈련과정을 추천합니다.
+   * @param request 사용자 정보 및 훈련과정 리스트
    * @return 추천된 NCS 코드 목록 (Set)
    */
-  public Mono<Set<String>> recommendNcsCodes(Member member) {
-    String promptText = String.format(
-            "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
-            String.join(", ", member.getSkills()),
-            String.join(", ", member.getCertificates())
-    );
+  public Mono<Set<String>> recommendTrainingCourse(TrainingRecommendationRequest request) {
+    String systemPrompt = """
+        당신은 사용자의 희망 직무에 따라 부족한 역량을 보완할 수 있는 훈련과정을 추천하는 AI입니다.
+        
+        입력받은 사용자 정보(skills, certificates, desiredJob, ncsCodes)와 훈련과정 리스트를 기반으로, 사용자가 아직 보유하지 않은 기술이나 자격증을 학습할 수 있는 훈련과정 중 가장 적합한 5개를 골라주세요.
+        
+        선정 기준은 다음과 같습니다:
+        - 희망 직무(desiredJob) 또는 NCS 코드에서 요구되는 역량 중, 사용자가 아직 갖추지 못한 기술(skill), 자격증(certificates)과 관련된 과정
+        - 훈련 제목 또는 내용에 부족한 역량이 언급되어야 함
+        - 이미 보유한 역량과 **중복되지 않는 과정**을 우선적으로 고려하세요.
 
-    String sytemPrompt = """
-    NCS 직무 코드 추천 전문가입니다.
-    기술/자격 기반으로 가장 관련 있는 NCS 코드를 반환하세요.
-    상위·하위 개념 모두 고려하되, 무관한 코드는 제외하세요.
-    결과는 오직 코드만, 콤마로 구분해서 반환하세요.
-    """;
+        ⚠️ 반환하는 "trprId"는 반드시 입력으로 주어진 trainings 배열 안에 실제 존재하는 값이어야 합니다.
+        임의로 생성하거나 목록에 없는 ID를 반환하지 마세요.
+        
+        결과는 다음 형식으로 반환하세요: ["trprId"]
+        설명은 생략하고 결과만 반환하세요.
+        """;
+
+    String userPrompt;
+    try {
+      ObjectWriter prettyWriter = objectMapper.writerWithDefaultPrettyPrinter();
+
+      String userJson = prettyWriter.writeValueAsString(request.userProfile());
+      String trainingsJson = prettyWriter.writeValueAsString(request.trainingCourses());
+
+      userPrompt = """
+                  {
+                    "user": %s,
+                    "trainings": %s
+                  }
+                  """.formatted(userJson, trainingsJson);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("요청 직렬화 실패", e);
+    }
 
     List<Map<String, String>> messages = List.of(
-            Map.of("role", "system", "content", sytemPrompt),
-            Map.of("role", "user", "content", promptText)
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
     );
 
     return openAiClient.generateChatCompletion(messages)
-            .map(response -> Set.of(response.split("\\s*,\\s*")));
+            .map(response -> {
+              try {
+                return objectMapper.readValue(response, new TypeReference<Set<String>>() {});
+              } catch (JsonProcessingException e) {
+                log.error("GPT 응답 파싱 실패: {}", response);
+                throw new RuntimeException("GPT 응답 파싱 오류", e);
+              }
+            });
   }
 
   public Mono<Set<String>> reassessNcsCodes(Member member, Set<NcsOccupation> currentNcsCodes) {
