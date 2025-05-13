@@ -17,9 +17,14 @@ public class OpenAiService {
 
   private final OpenAiClient openAiClient;
 
+  private static final String DESIRED_JOB_PROMPT_TEMPLATE = 
+          "희망직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
+  private static final String NCS_CODE_PROMPT_TEMPLATE = 
+          "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
+
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(Member member) {
     String userPrompt = String.format(
-            "희망직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
+            DESIRED_JOB_PROMPT_TEMPLATE,
             member.getProfile().getDesiredJob()
     );
 
