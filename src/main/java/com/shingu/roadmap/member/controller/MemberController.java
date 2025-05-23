@@ -9,7 +9,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Set;
 
 
 @RestController
@@ -29,8 +28,8 @@ public class MemberController implements MemberControllerSwagger {
 
 
     // 아직 테스트 버전입니다.
-    @GetMapping("/api/v1/member/{id}")
-    public Set<String> recommendCoursesForMember(@PathVariable Long id) {
+    @GetMapping("/api/v1/member/{id}/courses")
+    public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
         return memberService.recommendCoursesForMember(id);
     }
 }

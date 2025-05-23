@@ -15,6 +15,7 @@ import com.shingu.roadmap.member.repository.MemberRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.service.NullServiceException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -50,7 +51,16 @@ public class MemberService {
         return MemberResponse.from(member);
     }
 
-    public Set<String> recommendCoursesForMember(Long memberId) {
+    /**
+     * 회원의 프로필, 보유 기술, 자격증, 희망 직무 정보를 기반으로 맞춤형 직업훈련 과정을 추천합니다.
+     * 추천 과정은 사용 가능한 훈련 과정들에 대해 AI 기반 분석을 통해 생성됩니다.
+     *
+     * @param memberId 훈련 과정을 추천받을 대상 회원의 고유 식별자
+     * @return {@code TrainingCourseResponse.TrainCourseItem} 형태의 추천 훈련 과정 리스트.
+     *         추천이 생성되지 않은 경우 {@code null}을 반환할 수 있습니다.
+     * @throws EntityNotFoundException 지정된 ID를 가진 회원이 존재하지 않거나 삭제된 경우 발생합니다.
+     */
+    public List<TrainingCourseResponse.TrainCourseItem> recommendCoursesForMember(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .filter(m -> m.getDeletedAt() == null)
                 .orElseThrow(() -> new EntityNotFoundException("Member not found"));
@@ -79,6 +89,13 @@ public class MemberService {
                 .toList();
 
         TrainingRecommendationRequest request = new TrainingRecommendationRequest(userProfile, trainings);
-        return openAiService.recommendTrainingCourse(request).block();
+
+        Set<String> aiResponse = openAiService.recommendTrainingCourse(request).block();
+        if (CollectionUtils.isEmpty(aiResponse)) {
+            return null;
+        }
+        return trainingList.stream()
+                .filter(item -> aiResponse.contains(item.trprId()))
+                .collect(Collectors.toList());
     }
 }
