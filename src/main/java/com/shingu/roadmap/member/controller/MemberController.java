@@ -28,8 +28,8 @@ public class MemberController implements MemberControllerSwagger {
 
 
     // 아직 테스트 버전입니다.
-    @GetMapping("/api/v1/member/{id}")
-    public List<TrainingCourseResponse.TrainCourseItem> recommendCoursesForMember(@PathVariable Long id) {
+    @GetMapping("/api/v1/member/{id}/courses")
+    public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
         return memberService.recommendCoursesForMember(id);
     }
 }
