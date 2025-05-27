@@ -17,18 +17,18 @@ public class Profile {
   private Long id;
 
   @Column(length = 100)
-  private String educationLevel;
+  private String educationLevel; // 학력 수준 (예: 고등학교, 대학교 등)
 
   @Column(length = 100)
-  private String major;
+  private String major; // 전공 (예: 컴퓨터공학, 경영학 등)
 
   @Column(length = 100)
-  private String desiredJob;
+  private String desiredJob; // 희망 직무 (예: 소프트웨어 개발자, 데이터 분석가 등)
 
   @Setter
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "certificate_id")
-  private Certificate certificate;
+  private Certificate certificate; // 자격증 정보
 
   @ManyToMany
   @JoinTable(
@@ -36,7 +36,7 @@ public class Profile {
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "skill_id")
   )
-  private Set<Skill> skills = new HashSet<>();
+  private Set<Skill> skills = new HashSet<>(); // 보유 기술
 
   @ManyToMany
   @JoinTable(
@@ -44,7 +44,7 @@ public class Profile {
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "ncs_code")
   )
-  private Set<NcsOccupation> desiredCapabilities = new HashSet<>();
+  private Set<NcsOccupation> desiredCapabilities = new HashSet<>(); // 희망 직업 NCS 코드
 
   @ManyToMany
   @JoinTable(
@@ -52,7 +52,7 @@ public class Profile {
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "ncs_code")
   )
-  private Set<NcsOccupation> userCapabilities = new HashSet<>();
+  private Set<NcsOccupation> userCapabilities = new HashSet<>(); // 보유 NCS 코드
 
   public void addSkill(Skill skill) {
     skills.add(skill);

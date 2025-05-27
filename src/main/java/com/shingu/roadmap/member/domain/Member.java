@@ -5,6 +5,7 @@ import com.shingu.roadmap.auth.domain.RefreshToken;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +24,8 @@ public class Member {
 
   @Column(nullable = false, length = 20)
   private String role; // ADMIN, USER 등
+
+  private LocalDate birthDate; // 생년월일
 
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, optional = false)
   @JoinColumn(name = "account_id", unique = true, nullable = false)
