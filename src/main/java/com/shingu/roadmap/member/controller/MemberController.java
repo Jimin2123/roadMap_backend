@@ -22,14 +22,16 @@ public class MemberController implements MemberControllerSwagger {
             @PathVariable Long id,
             @RequestBody ProfileRequest profileRequest
     ) {
-        MemberResponse response = memberService.updateProfile(id, profileRequest);
-        return ResponseEntity.ok(response);
+//        MemberResponse response = memberService.updateProfile(id, profileRequest);
+//        return ResponseEntity.ok(response);
+        return null;
     }
 
 
     // 아직 테스트 버전입니다.
     @GetMapping("/api/v1/member/{id}/courses")
     public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
-        return memberService.recommendCoursesForMember(id);
+        return null;
+//        return memberService.recommendCoursesForMember(id);
     }
 }

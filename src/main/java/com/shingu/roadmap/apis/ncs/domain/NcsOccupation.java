@@ -17,7 +17,11 @@ public class NcsOccupation {
   @Id
   @Column(name = "ncs_code", nullable = false)
   private String dutyCd;
+
+  @Column(length = 100)
   private String dutyNm; // 직무명
+
+  @Column(length = 100)
   private String dutySvcNo; // 직무 서비스 번호
 
   @Column(columnDefinition = "TEXT")
