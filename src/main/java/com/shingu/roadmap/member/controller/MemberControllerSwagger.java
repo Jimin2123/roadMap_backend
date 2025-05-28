@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.controller;
 
+import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +12,19 @@ import org.springframework.http.ResponseEntity;
 
 @Tag(name = "Member API", description = "회원 관련 API")
 public interface MemberControllerSwagger {
+
+  @Operation(
+          summary = "회원 가입",
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "회원 가입 성공",
+                          content = @Content(schema = @Schema(implementation = MemberResponse.class))
+                  ),
+          }
+  )
+  ResponseEntity<MemberResponse> signUp(MemberRequest memberRequest);
+
   @Operation(
           summary = "회원 프로필 정보 추가",
           responses = {

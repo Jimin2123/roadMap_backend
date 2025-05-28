@@ -25,10 +25,13 @@ public class Profile {
   @Column(length = 100)
   private String desiredJob; // 희망 직무 (예: 소프트웨어 개발자, 데이터 분석가 등)
 
-  @Setter
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "certificate_id")
-  private Certificate certificate; // 자격증 정보
+  @ManyToMany
+  @JoinTable(
+          name = "profile_certificate",
+          joinColumns = @JoinColumn(name = "profile_id"),
+          inverseJoinColumns = @JoinColumn(name = "certificate_id")
+  )
+  private Set<Certificate> certificates = new HashSet<>(); // 보유 자격증
 
   @ManyToMany
   @JoinTable(

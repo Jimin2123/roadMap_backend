@@ -7,7 +7,10 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
+import com.shingu.roadmap.member.domain.Certificate;
 import com.shingu.roadmap.member.domain.Member;
+import com.shingu.roadmap.member.domain.Profile;
+import com.shingu.roadmap.member.domain.Skill;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,6 +19,7 @@ import reactor.core.publisher.Mono;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -84,8 +88,6 @@ public class OpenAiService {
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(Member member) {
     String DESIRED_JOB_PROMPT_TEMPLATE = 
           "희망직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
-    String NCS_CODE_PROMPT_TEMPLATE = 
-          "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
     
     String userPrompt = String.format(
             DESIRED_JOB_PROMPT_TEMPLATE,
@@ -98,10 +100,13 @@ public class OpenAiService {
   }
 
   public Mono<Set<String>> recommendNcsCodeUsingAssistant(Member member) {
+    Profile profile = member.getProfile();
     String userPrompt = String.format(
             "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
-            String.join(", ", member.getSkills()),
-            String.join(", ", member.getCertificates())
+            profile.getSkills().stream()
+                    .map(Skill::getName)
+                    .collect(Collectors.joining(", ")),
+            profile.getCertificates().stream().map(Certificate::getJmfldnm).collect(Collectors.joining(", "))
     );
 
     return openAiClient.generateAssistantResponse(userPrompt)

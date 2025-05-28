@@ -15,7 +15,7 @@ public record ProfileRequest(
         @Schema(description = "전공", example = "컴퓨터공학")
         String major,
 
-        @Schema(description = "학력", example = "UNIVERSITY")
+        @Schema(description = "학력", example = "UNIVERSITY", implementation = EducationLevelType.class)
         EducationLevelType educationLevel,
 
         @Schema(description = "보유 기술", example = "[\"Java\", \"Spring\"]")
@@ -23,12 +23,4 @@ public record ProfileRequest(
 
         @Schema(description = "자격증", example = "[\"정보처리기사\", \"JLPT 2급\"]")
         Set<String> certificates
-) {
-        public Profile toProfile() {
-                return new Profile(
-                        educationLevel,
-                        major,
-                        desiredJob
-                );
-        }
-}
+) { }

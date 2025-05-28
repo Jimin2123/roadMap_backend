@@ -27,6 +27,8 @@ public class Member {
 
   private LocalDate birthDate; // 생년월일
 
+  private String phoneNumber; // 전화번호
+
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, optional = false)
   @JoinColumn(name = "account_id", unique = true, nullable = false)
   private Account account;

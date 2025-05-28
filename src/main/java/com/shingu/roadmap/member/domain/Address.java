@@ -25,6 +25,9 @@ public class Address {
   private String addressDetail; // 상세 주소
 
   @Column(length = 100)
+  private String regionCity; // 시/군/구
+
+  @Column(length = 100)
   private String zoncode; // 우편번호
 
   @OneToOne(mappedBy = "address")

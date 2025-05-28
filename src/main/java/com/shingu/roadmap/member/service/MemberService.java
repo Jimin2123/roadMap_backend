@@ -1,27 +1,19 @@
 package com.shingu.roadmap.member.service;
 
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
-import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
-import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
-import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
-import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
-import com.shingu.roadmap.member.domain.Member;
-import com.shingu.roadmap.member.dto.request.ProfileRequest;
+import com.shingu.roadmap.auth.domain.Account;
+import com.shingu.roadmap.auth.dto.request.LoginRequest;
+import com.shingu.roadmap.member.domain.*;
+import com.shingu.roadmap.member.dto.request.AddressRequest;
+import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.hibernate.service.NullServiceException;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
-
-import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +22,50 @@ public class MemberService {
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
     private final Work24Service work24Service;
+
+    @Transactional
+    public MemberResponse signUp(MemberRequest request) {
+
+        LoginRequest accReq = request.loginRequest();
+        Account account = new Account(
+                null,
+                accReq.email(),
+                accReq.password(),
+                null,
+                null
+        );
+
+        AddressRequest addrReq = request.addressRequest();
+        Address address = new Address(
+                null,
+                addrReq.address(),
+                addrReq.addressJibun(),
+                addrReq.addressDetail(),
+                addrReq.regionCity(),
+                addrReq.zoncode(),
+                null
+        );
+
+        Member member = new Member(
+                null,
+                request.name(),
+                "USER", // 기본 역할은 USER로 설정
+                request.birthDate(),
+                request.phoneNumber(),
+                account,
+                address,
+                null, // 프로필은 나중에 업데이트
+                null,
+                null
+        );
+
+        member.setAccount(account);
+        member.setAddress(address);
+
+        memberRepository.save(member);
+
+        return MemberResponse.from(member);
+    }
 
 //    @Transactional
 //    public MemberResponse updateProfile(Long memberId, ProfileRequest request) {

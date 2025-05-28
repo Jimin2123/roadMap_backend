@@ -1,6 +1,7 @@
 package com.shingu.roadmap.member.controller;
 
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
+import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.service.MemberService;
@@ -17,14 +18,24 @@ public class MemberController implements MemberControllerSwagger {
     private final MemberService memberService;
 
     @Override
+    @PostMapping("/api/v1/member")
+    public ResponseEntity<MemberResponse> signUp(
+            @RequestBody MemberRequest memberRequest
+    ) {
+        MemberResponse response = memberService.signUp(memberRequest);
+        return ResponseEntity.ok(response);
+    }
+
+    @Override
     @PutMapping("/api/v1/member/{id}/profile")
     public ResponseEntity<MemberResponse> updateProfile(
             @PathVariable Long id,
             @RequestBody ProfileRequest profileRequest
     ) {
+        return null;
 //        MemberResponse response = memberService.updateProfile(id, profileRequest);
 //        return ResponseEntity.ok(response);
-        return null;
+
     }
 
 
