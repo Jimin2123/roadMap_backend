@@ -86,11 +86,8 @@ public class OpenAiService {
   }
 
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
-    String DESIRED_JOB_PROMPT_TEMPLATE = 
-          "희망직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
-    
     String userPrompt = String.format(
-            DESIRED_JOB_PROMPT_TEMPLATE,
+            "희망 직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
             desiredJob
     );
 

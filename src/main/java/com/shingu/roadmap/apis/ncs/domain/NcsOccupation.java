@@ -1,5 +1,6 @@
 package com.shingu.roadmap.apis.ncs.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -27,7 +28,8 @@ public class NcsOccupation {
   @Column(columnDefinition = "TEXT")
   private String dutyDef; // 직무 설명
 
-  @OneToMany(mappedBy = "occupation", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OneToMany(mappedBy = "occupation", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+  @JsonIgnore
   private List<NcsOccupationStandardLink> trainingLinks = new ArrayList<>();
 
   public NcsOccupation(String dutyCd, String dutyNm, String dutySvcNo, String dutyDef) {
