@@ -85,13 +85,13 @@ public class OpenAiService {
             });
   }
 
-  public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(Member member) {
+  public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
     String DESIRED_JOB_PROMPT_TEMPLATE = 
           "희망직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.";
     
     String userPrompt = String.format(
             DESIRED_JOB_PROMPT_TEMPLATE,
-            member.getProfile().getDesiredJob()
+            desiredJob
     );
 
     return openAiClient.generateAssistantResponse(userPrompt)
@@ -99,14 +99,11 @@ public class OpenAiService {
             .map(HashSet::new); // List -> Set 변환
   }
 
-  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Member member) {
-    Profile profile = member.getProfile();
+  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Set<String> skills, Set<String> certificates) {
     String userPrompt = String.format(
             "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
-            profile.getSkills().stream()
-                    .map(Skill::getName)
-                    .collect(Collectors.joining(", ")),
-            profile.getCertificates().stream().map(Certificate::getJmfldnm).collect(Collectors.joining(", "))
+            String.join(", ", skills),
+            String.join(", ", certificates)
     );
 
     return openAiClient.generateAssistantResponse(userPrompt)

@@ -32,10 +32,8 @@ public class MemberController implements MemberControllerSwagger {
             @PathVariable Long id,
             @RequestBody ProfileRequest profileRequest
     ) {
-        return null;
-//        MemberResponse response = memberService.updateProfile(id, profileRequest);
-//        return ResponseEntity.ok(response);
-
+        MemberResponse response = memberService.updateProfile(id, profileRequest);
+        return ResponseEntity.ok(response);
     }
 
 
