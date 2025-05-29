@@ -1,87 +1,59 @@
 package com.shingu.roadmap.member.domain;
 
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
-import com.shingu.roadmap.common.domain.BaseEntity;
-import com.shingu.roadmap.member.dto.request.ProfileRequest;
+import com.shingu.roadmap.auth.domain.Account;
+import com.shingu.roadmap.auth.domain.RefreshToken;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
+
 
 @Entity
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Getter
-public class Member extends BaseEntity {
+public class Member {
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
 
-    private String name; // 이름
-    private String phoneNumber; // 전화번호
-    private LocalDate birthDate; // 생년월일
+  @Column(nullable = false, length = 100)
+  private String name;
 
-    @Embedded
-    private Profile profile; // 프로필 정보
+  @Column(nullable = false, length = 20)
+  private String role; // ADMIN, USER 등
 
-    @ElementCollection
-    @CollectionTable(name = "member_skill", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "skill")
-    private Set<String> skills = new HashSet<>(); // 보유 기술 목록
+  private LocalDate birthDate; // 생년월일
 
-    @ElementCollection
-    @CollectionTable(name = "member_certificate", joinColumns = @JoinColumn(name = "member_id"))
-    @Column(name = "certificate")
-    private Set<String> certificates = new HashSet<>(); // 자격증 목록
+  private String phoneNumber; // 전화번호
 
-    @ManyToMany
-    @JoinTable(
-            name = "member_ncs",
-            joinColumns = @JoinColumn(name = "member_id"),
-            inverseJoinColumns = @JoinColumn(name = "ncs_code")
-    )
-    private Set<NcsOccupation> ncsOccupations = new HashSet<>(); // NCS 직무 정보
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, optional = false)
+  @JoinColumn(name = "account_id", unique = true, nullable = false)
+  private Account account;
 
-    /**
-     * 보유 기술 목록을 초기화 후 등록합니다.
-     * @param skills
-     */
-    public void updateSkills(Set<String> skills) {
-        this.skills.clear();
-        if (skills != null) {
-            this.skills.addAll(skills);
-        }
-    }
+  @Setter
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+  @JoinColumn(name = "address_id", unique = true)
+  private Address address;
 
-    /**
-     * 자격증 목록을 초기화 후 등록합니다.
-     * @param certificates
-     */
-    public void updateCertificates(Set<String> certificates) {
-        this.certificates.clear();
-        if (certificates != null) {
-            this.certificates.addAll(certificates);
-        }
-    }
+  @Setter
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+  @JoinColumn(name = "profile_id", unique = true)
+  private Profile profile;
 
-    /**
-     * 회원 프로필 정보를 업데이트합니다.
-     * @param request
-     */
-    public void applyProfile(ProfileRequest request) {
-        this.profile = new Profile(
-                request.educationLevel(),
-                request.major(),
-                request.desiredJob()
-        );
-        updateSkills(request.skills());
-        updateCertificates(request.certificates());
-    }
+  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+  @JoinColumn(name = "member_id") // 이게 핵심: 외래 키를 Member 쪽이 관리
+  private List<RecommendedTraining> recommendedTrainings = new ArrayList<>();
 
-    public void updateNcsOccupations(Set<NcsOccupation> occupations) {
-        this.ncsOccupations.clear();
-        this.ncsOccupations.addAll(occupations);
-    }
+  @Setter
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+  @JoinColumn(name = "refresh_token_id", unique = true)
+  private RefreshToken refreshToken;
+
+  public void setAccount(Account account) {
+    this.account = account;
+    account.setMember(this);
+  }
 }
