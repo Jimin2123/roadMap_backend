@@ -6,11 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
+import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.member.domain.Certificate;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.domain.Skill;
+import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,11 @@ public class OpenAiService {
    * @return 추천된 NCS 코드 목록 (Set)
    */
   public Mono<Set<String>> recommendTrainingCourse(TrainingRecommendationRequest request) {
+
+    if( request == null || request.userProfile() == null || request.trainingCourses() == null) {
+      return Mono.error(new IllegalArgumentException("요청 정보가 올바르지 않습니다."));
+    }
+
     String systemPrompt = """
         당신은 사용자의 희망 직무에 따라 부족한 역량을 보완할 수 있는 훈련과정을 추천하는 AI입니다.
         
@@ -56,7 +63,7 @@ public class OpenAiService {
     try {
       ObjectWriter prettyWriter = objectMapper.writerWithDefaultPrettyPrinter();
 
-      String userJson = prettyWriter.writeValueAsString(request.userProfile());
+      String userJson = String.valueOf(GptUserProfileDto.from(request.userProfile()));
       String trainingsJson = prettyWriter.writeValueAsString(request.trainingCourses());
 
       userPrompt = """

@@ -15,7 +15,7 @@ public class Work24ClientConfig {
   @Qualifier("work24RestClient")
   public RestClient work24RestClient(Work24Properties properties) {
     return RestClient.builder()
-            .baseUrl(properties.getTraningCourceUrl())
+            .baseUrl(properties.getTrainingCourseUrl())
             .build();
   }
 }

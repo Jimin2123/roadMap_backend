@@ -7,8 +7,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
@@ -30,8 +28,8 @@ public class Work24Client {
     String startDate = LocalDate.now().plusDays(3).format(formatter);
 
     UriComponentsBuilder builder = UriComponentsBuilder
-            .fromUriString(work24Properties.getTraningCourceUrl())
-            .queryParam("authKey", work24Properties.getTraningCourceKey())
+            .fromUriString(work24Properties.getTrainingCourseUrl())
+            .queryParam("authKey", work24Properties.getTrainingCourseKey())
             .queryParam("returnType", "JSON")
             .queryParam("outType", "1")
             .queryParam("pageNum", String.valueOf(pageNum))
@@ -42,6 +40,8 @@ public class Work24Client {
             .queryParam("srchTraEndDt", endDate)
             .queryParam("sort", "ASC")
             .queryParam("sortCol", "TRNG_BGDE");
+
+    System.out.println(builder.toUriString());
 
     String uri = builder.build(true).encode().toUriString();
 

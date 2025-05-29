@@ -4,8 +4,10 @@ import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.service.MemberService;
 import lombok.RequiredArgsConstructor;
+import org.apache.coyote.Response;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -36,11 +38,15 @@ public class MemberController implements MemberControllerSwagger {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/api/v1/member/{id}")
+    public List<String> getProfile(@PathVariable Long id) {
+        return memberService.getProfile(id);
+    }
+
 
     // 아직 테스트 버전입니다.
     @GetMapping("/api/v1/member/{id}/courses")
     public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
-        return null;
-//        return memberService.recommendCoursesForMember(id);
+        return memberService.recommendCoursesForMember(id);
     }
 }
