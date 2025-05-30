@@ -2,10 +2,20 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.4.4'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'pl.allegro.tech.build.axion-release' version '1.15.3'
+}
+scmVersion {
+    tag {
+        prefix = '' // 태그 이름에서 'v' 같은 접두어 제거
+    }
+    nextVersion {
+        suffix = 'SNAPSHOT' // 자동 증가 버전의 접미사
+    }
 }
 
+
 group = 'com.shingu'
-version = '0.0.1-SNAPSHOT'
+version = scmVersion.version
 
 java {
     toolchain {
