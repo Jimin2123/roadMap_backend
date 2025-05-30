@@ -163,6 +163,13 @@ public class MemberService {
         return MemberResponse.from(member);
     }
 
+    public MemberResponse getMember(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new EntityNotFoundException("Member not found"));
+
+        return MemberResponse.from(member);
+    }
+
     public ProfileResponse getProfile(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new EntityNotFoundException("Member not found"));

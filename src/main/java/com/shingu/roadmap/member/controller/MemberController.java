@@ -38,6 +38,12 @@ public class MemberController implements MemberControllerSwagger {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/api/v1/member/{id}")
+    public ResponseEntity<MemberResponse> getMember(@PathVariable Long id) {
+        MemberResponse response = memberService.getMember(id);
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/api/v1/member/profile/{id}")
     public ResponseEntity<ProfileResponse> getProfile(@PathVariable Long id) {
         ProfileResponse response =  memberService.getProfile(id);
