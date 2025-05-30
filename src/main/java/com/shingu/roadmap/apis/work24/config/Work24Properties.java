@@ -11,8 +11,8 @@ import org.springframework.validation.annotation.Validated;
 public class Work24Properties {
 
   @NotBlank
-  String traningCourceUrl;
+  String trainingCourseUrl;
 
   @NotBlank
-  String traningCourceKey;
+  String trainingCourseKey;
 }

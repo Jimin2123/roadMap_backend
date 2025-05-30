@@ -33,6 +33,9 @@ public record TrainingCourseResponse(
           @Schema(description = "고용보험3개월 취업률")
           String eiEmplRate3,
 
+          @Schema(description = "자격증")
+          String certificate,
+
           @Schema(description = "제목")
           String title,
 

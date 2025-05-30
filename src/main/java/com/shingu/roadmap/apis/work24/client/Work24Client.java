@@ -2,15 +2,15 @@ package com.shingu.roadmap.apis.work24.client;
 
 import com.shingu.roadmap.apis.work24.config.Work24Properties;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
+import com.shingu.roadmap.common.enums.Work24Region;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 
 @Component
 public class Work24Client {
@@ -22,26 +22,30 @@ public class Work24Client {
     this.work24Properties = work24Properties;
   }
 
-  public TrainingCourseResponse getTrainingCourseList(String ncsCode, int pageNum) {
+  public TrainingCourseResponse getTrainingCourseList(String ncsCode, String address, int pageNum) {
 
     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     String endDate = LocalDate.now().plusMonths(6).format(formatter);
     String startDate = LocalDate.now().plusDays(3).format(formatter);
 
+    String regionCode = Work24Region.resolveCodeByAddress(address);
+
     UriComponentsBuilder builder = UriComponentsBuilder
-            .fromUriString(work24Properties.getTraningCourceUrl())
-            .queryParam("authKey", work24Properties.getTraningCourceKey())
+            .fromUriString(work24Properties.getTrainingCourseUrl())
+            .queryParam("authKey", work24Properties.getTrainingCourseKey())
             .queryParam("returnType", "JSON")
             .queryParam("outType", "1")
             .queryParam("pageNum", String.valueOf(pageNum))
             .queryParam("pageSize", "100")
-            .queryParam("srchTraArea1", "41")
+            .queryParam("srchTraArea1", regionCode)
             .queryParam("srchNcs1", ncsCode)
             .queryParam("srchTraStDt", startDate)
             .queryParam("srchTraEndDt", endDate)
             .queryParam("sort", "ASC")
             .queryParam("sortCol", "TRNG_BGDE");
+
+    System.out.println(builder.toUriString());
 
     String uri = builder.build(true).encode().toUriString();
 
