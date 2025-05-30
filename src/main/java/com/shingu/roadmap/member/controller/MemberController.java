@@ -29,7 +29,7 @@ public class MemberController implements MemberControllerSwagger {
     }
 
     @Override
-    @PutMapping("/api/v1/member/{id}/profile")
+    @PutMapping("/api/v1/member/profile/{id}")
     public ResponseEntity<MemberResponse> updateProfile(
             @PathVariable Long id,
             @RequestBody ProfileRequest profileRequest
