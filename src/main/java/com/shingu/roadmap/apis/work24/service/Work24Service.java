@@ -16,7 +16,7 @@ public class Work24Service {
 
   private final Work24Client work24Client;
 
-  public List<TrainingCourseResponse.TrainCourseItem> getAllMatchingCourses(List<String> ncsCodes) {
+  public List<TrainingCourseResponse.TrainCourseItem> getAllMatchingCourses(List<String> ncsCodes, String address) {
     Set<String> seenTrprIds = new HashSet<>();
     List<TrainingCourseResponse.TrainCourseItem> result = new ArrayList<>();
 
@@ -24,12 +24,12 @@ public class Work24Service {
       int pageSize = 100;
       int pageNum = 1;
 
-      TrainingCourseResponse firstPage = work24Client.getTrainingCourseList(ncsCode, pageNum);
+      TrainingCourseResponse firstPage = work24Client.getTrainingCourseList(ncsCode, address, pageNum);
       int totalCount = firstPage.scn_cnt();
       int totalPages = (int) Math.ceil((double) totalCount / pageSize);
 
       for (int i = 1; i <= totalPages; i++) {
-        TrainingCourseResponse page = (i == 1) ? firstPage : work24Client.getTrainingCourseList(ncsCode, i);
+        TrainingCourseResponse page = (i == 1) ? firstPage : work24Client.getTrainingCourseList(ncsCode, address, i);
 
         for (TrainingCourseResponse.TrainCourseItem item : page.srchList()) {
           if (item.ncsCd() != null && item.trprId() != null &&

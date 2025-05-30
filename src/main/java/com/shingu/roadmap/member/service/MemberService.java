@@ -198,7 +198,8 @@ public class MemberService {
         }
 
         List<String> ncsCodes = profile.getUserCapabilities().stream().map(NcsOccupation::getDutyCd).collect(Collectors.toList());
-        List<TrainingCourseResponse.TrainCourseItem> trainingList = work24Service.getAllMatchingCourses(ncsCodes);
+        String address = member.getAddress().getAddress();
+        List<TrainingCourseResponse.TrainCourseItem> trainingList = work24Service.getAllMatchingCourses(ncsCodes, address);
 
         List<GptTrainingCourseDto> trainings = trainingList.stream()
                 .map(item -> new GptTrainingCourseDto(
@@ -210,7 +211,7 @@ public class MemberService {
                 .toList();
 
         ProfileResponse profileResponse = ProfileResponse.from(profile);
-        TrainingRecommendationRequest request = new TrainingRecommendationRequest(profileResponse, trainings);
+        TrainingRecommendationRequest request = new TrainingRecommendationRequest(profileResponse, trainings, address);
 
         Set<String> aiResponse = openAiService.recommendTrainingCourse(request).block();
         if (CollectionUtils.isEmpty(aiResponse)) {

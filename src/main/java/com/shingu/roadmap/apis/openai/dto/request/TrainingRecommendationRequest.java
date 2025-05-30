@@ -6,6 +6,7 @@ import java.util.List;
 
 public record TrainingRecommendationRequest(
         ProfileResponse userProfile,
-        List<GptTrainingCourseDto> trainingCourses
+        List<GptTrainingCourseDto> trainingCourses,
+        String address
 ) { }
 

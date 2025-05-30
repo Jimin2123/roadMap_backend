@@ -49,6 +49,7 @@ public class OpenAiService {
         
         선정 기준은 다음과 같습니다:
         - 희망 직무(desiredJob) 또는 NCS 코드에서 요구되는 역량 중, 사용자가 아직 갖추지 못한 기술(skill), 자격증(certificates)과 관련된 과정
+        - address를 참조해서 지역적으로 가능한 훈련과정을 추천해줘야함
         - 훈련 제목 또는 내용에 부족한 역량이 언급되어야 함
         - 이미 보유한 역량과 **중복되지 않는 과정**을 우선적으로 고려하세요.
 
@@ -69,9 +70,10 @@ public class OpenAiService {
       userPrompt = """
                   {
                     "user": %s,
+                    address: %s,
                     "trainings": %s
                   }
-                  """.formatted(userJson, trainingsJson);
+                  """.formatted(userJson, request.address(), trainingsJson);
     } catch (JsonProcessingException e) {
       throw new RuntimeException("요청 직렬화 실패", e);
     }
