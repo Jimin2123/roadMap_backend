@@ -163,7 +163,7 @@ public class MemberService {
         return MemberResponse.from(member);
     }
 
-    public List<String> getProfile(Long memberId) {
+    public ProfileResponse getProfile(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new EntityNotFoundException("Member not found"));
 
@@ -172,10 +172,7 @@ public class MemberService {
             throw new EntityNotFoundException("Profile not found for member ID: " + member.getId());
         }
 
-        List<String> ncsCodes = profile.getUserCapabilities().stream().map(NcsOccupation::getDutyCd).toList();
-        System.out.println(ncsCodes);
-
-        return ncsCodes;
+      return ProfileResponse.from(profile);
     }
 
     /**

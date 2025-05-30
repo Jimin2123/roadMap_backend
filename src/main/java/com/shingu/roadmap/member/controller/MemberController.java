@@ -38,9 +38,10 @@ public class MemberController implements MemberControllerSwagger {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/v1/member/{id}")
-    public List<String> getProfile(@PathVariable Long id) {
-        return memberService.getProfile(id);
+    @GetMapping("/api/v1/member/profile/{id}")
+    public ResponseEntity<ProfileResponse> getProfile(@PathVariable Long id) {
+        ProfileResponse response =  memberService.getProfile(id);
+        return ResponseEntity.ok(response);
     }
 
 
