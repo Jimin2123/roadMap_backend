@@ -2,13 +2,7 @@ package com.shingu.roadmap.member.service;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
-import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
-import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
-import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
-import com.shingu.roadmap.apis.saramin.service.SaraminService;
-import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
-import com.shingu.roadmap.apis.work24.service.Work24Service;
 import com.shingu.roadmap.auth.domain.Account;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.member.domain.*;
@@ -27,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
