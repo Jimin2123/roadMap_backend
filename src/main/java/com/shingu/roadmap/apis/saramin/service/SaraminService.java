@@ -14,4 +14,8 @@ public class SaraminService {
   public SaraminJobListResponse getJobList(String keyword) {
     return saraminClient.getJobList(keyword);
   }
+
+  public SaraminJobListResponse getJobListForMainPage() {
+    return saraminClient.getJobList("");
+  }
 }

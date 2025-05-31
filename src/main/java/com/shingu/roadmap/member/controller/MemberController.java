@@ -51,16 +51,9 @@ public class MemberController implements MemberControllerSwagger {
         return ResponseEntity.ok(response);
     }
 
-
     // 아직 테스트 버전입니다.
     @GetMapping("/api/v1/member/{id}/courses")
     public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
         return memberService.recommendCoursesForMember(id);
-    }
-
-    @GetMapping("test")
-    public ResponseEntity<SaraminJobListResponse> test() {
-        SaraminJobListResponse response = memberService.test();
-        return ResponseEntity.ok(response);
     }
 }
