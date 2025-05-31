@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.controller;
 
+import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
@@ -55,5 +56,11 @@ public class MemberController implements MemberControllerSwagger {
     @GetMapping("/api/v1/member/{id}/courses")
     public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
         return memberService.recommendCoursesForMember(id);
+    }
+
+    @GetMapping("test")
+    public ResponseEntity<SaraminJobListResponse> test() {
+        SaraminJobListResponse response = memberService.test();
+        return ResponseEntity.ok(response);
     }
 }

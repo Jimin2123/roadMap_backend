@@ -5,6 +5,8 @@ import com.shingu.roadmap.apis.ncs.service.NcsApiService;
 import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
+import com.shingu.roadmap.apis.saramin.service.SaraminService;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
 import com.shingu.roadmap.auth.domain.Account;
@@ -39,6 +41,7 @@ public class MemberService {
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
     private final Work24Service work24Service;
+    private final SaraminService saraminService;
 
     @Transactional
     public MemberResponse signUp(MemberRequest request) {
@@ -227,4 +230,7 @@ public class MemberService {
                 .collect(Collectors.toList());
     }
 
+    public SaraminJobListResponse test() {
+        return saraminService.getJobList("개발자");
+    }
 }
