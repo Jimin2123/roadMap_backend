@@ -23,6 +23,6 @@ public class TrainingController implements TrainingControllerSwagger {
   @Override
   @GetMapping("/api/v1/training/{id}/courses")
   public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
-    return null;
+    return trainingService.recommendCoursesForMember(id);
   }
 }
