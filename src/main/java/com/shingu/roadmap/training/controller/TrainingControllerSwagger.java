@@ -38,4 +38,11 @@ public interface TrainingControllerSwagger {
           }
   )
   List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(Long id);
+
+  @Operation(
+          summary = "구직자취업역량 강화프로그램 API",
+          description = "고용24 구직자취업역량 강화프로그램 API를 통해 구직자 취업 역량 강화 프로그램 정보를 조회합니다.",
+          responses = {}
+  )
+  void getTrainingPrograms();
 }

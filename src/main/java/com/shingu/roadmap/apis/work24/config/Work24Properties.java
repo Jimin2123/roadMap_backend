@@ -15,4 +15,10 @@ public class Work24Properties {
 
   @NotBlank
   String trainingCourseKey;
+
+  @NotBlank
+  String skillUpUrl;
+
+  @NotBlank
+  String skillUpKey;
 }

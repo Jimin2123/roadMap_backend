@@ -16,6 +16,10 @@ public class Work24Service {
 
   private final Work24Client work24Client;
 
+  public void getTrainingPrograms() {
+    work24Client.getTrainingPrograms();
+  }
+
   public List<TrainingCourseResponse.TrainCourseItem> getAllMatchingCourses(List<String> ncsCodes, String address) {
     Set<String> seenTrprIds = new HashSet<>();
     List<TrainingCourseResponse.TrainCourseItem> result = new ArrayList<>();

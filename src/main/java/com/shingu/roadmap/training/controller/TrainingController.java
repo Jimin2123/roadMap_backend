@@ -25,4 +25,10 @@ public class TrainingController implements TrainingControllerSwagger {
   public List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(@PathVariable Long id) {
     return trainingService.recommendCoursesForMember(id);
   }
+
+  @Override
+  @GetMapping("test")
+  public void getTrainingPrograms() {
+    trainingService.getTrainingPrograms();
+  }
 }

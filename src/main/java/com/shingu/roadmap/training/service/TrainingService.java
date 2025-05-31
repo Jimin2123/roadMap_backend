@@ -70,4 +70,8 @@ public class TrainingService {
             .filter(item -> aiResponse.contains(item.trprId()))
             .collect(Collectors.toList());
   }
+
+  public void getTrainingPrograms() {
+    work24Service.getTrainingPrograms();
+  }
 }

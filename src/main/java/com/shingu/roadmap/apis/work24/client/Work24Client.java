@@ -10,7 +10,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 
 @Component
 public class Work24Client {
@@ -21,6 +20,28 @@ public class Work24Client {
     this.restClient = restClient;
     this.work24Properties = work24Properties;
   }
+
+  public void getTrainingPrograms() {
+
+    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    String startDate = LocalDate.now().plusDays(3).format(formatter);
+
+    UriComponentsBuilder builder = UriComponentsBuilder
+            .fromUriString(work24Properties.getSkillUpUrl())
+            .queryParam("authKey", work24Properties.getSkillUpKey())
+            .queryParam("returnType", "XML")
+            .queryParam("startPage", "1")
+            .queryParam("display", "100")
+            .queryParam("pgmStdt", startDate)
+            .queryParam("topOrgCd","15000")
+            .queryParam("orgCd", "15163");
+
+    System.out.println(builder.toUriString());
+
+    String uri = builder.build(true).encode().toUriString();
+  }
+
 
   public TrainingCourseResponse getTrainingCourseList(String ncsCode, String address, int pageNum) {
 
