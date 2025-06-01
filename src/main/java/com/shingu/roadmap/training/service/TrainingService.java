@@ -4,6 +4,7 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
 import com.shingu.roadmap.member.domain.Member;
@@ -71,7 +72,7 @@ public class TrainingService {
             .collect(Collectors.toList());
   }
 
-  public void getTrainingPrograms() {
-    work24Service.getTrainingPrograms();
+  public EmpPgmListResponse getTrainingPrograms() {
+    return work24Service.getTrainingPrograms();
   }
 }

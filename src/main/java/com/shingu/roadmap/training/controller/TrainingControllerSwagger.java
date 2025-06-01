@@ -1,6 +1,7 @@
 package com.shingu.roadmap.training.controller;
 
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
+import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -42,7 +43,13 @@ public interface TrainingControllerSwagger {
   @Operation(
           summary = "구직자취업역량 강화프로그램 API",
           description = "고용24 구직자취업역량 강화프로그램 API를 통해 구직자 취업 역량 강화 프로그램 정보를 조회합니다.",
-          responses = {}
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "프로그램 조회 성공",
+                          content = @Content(schema = @Schema(implementation = EmpPgmListResponse.class))
+                  )
+          }
   )
-  void getTrainingPrograms();
+  EmpPgmListResponse getTrainingPrograms();
 }

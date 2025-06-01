@@ -1,5 +1,6 @@
 package com.shingu.roadmap.training.controller;
 
+import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.training.service.TrainingService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class TrainingController implements TrainingControllerSwagger {
 
   @Override
   @GetMapping("test")
-  public void getTrainingPrograms() {
-    trainingService.getTrainingPrograms();
+  public EmpPgmListResponse getTrainingPrograms() {
+    return trainingService.getTrainingPrograms();
   }
 }

@@ -1,6 +1,7 @@
 package com.shingu.roadmap.apis.work24.client;
 
 import com.shingu.roadmap.apis.work24.config.Work24Properties;
+import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.common.enums.Work24Region;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -21,7 +22,7 @@ public class Work24Client {
     this.work24Properties = work24Properties;
   }
 
-  public void getTrainingPrograms() {
+  public EmpPgmListResponse getTrainingPrograms(int pageNum) {
 
     DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
 
@@ -31,15 +32,18 @@ public class Work24Client {
             .fromUriString(work24Properties.getSkillUpUrl())
             .queryParam("authKey", work24Properties.getSkillUpKey())
             .queryParam("returnType", "XML")
-            .queryParam("startPage", "1")
+            .queryParam("startPage", String.valueOf(pageNum))
             .queryParam("display", "100")
-            .queryParam("pgmStdt", startDate)
-            .queryParam("topOrgCd","15000")
-            .queryParam("orgCd", "15163");
-
-    System.out.println(builder.toUriString());
+            .queryParam("pgmStdt", startDate) // 과정 시작일
+            .queryParam("topOrgCd","15000"); // 관할 청
+//            .queryParam("orgCd", "15163"); // 고용 센터
 
     String uri = builder.build(true).encode().toUriString();
+
+    return restClient.get()
+            .uri(uri)
+            .retrieve()
+            .body(EmpPgmListResponse.class);
   }
 
 
