@@ -35,8 +35,8 @@ public class Work24Client {
             .queryParam("startPage", String.valueOf(pageNum))
             .queryParam("display", "100")
             .queryParam("pgmStdt", startDate) // 과정 시작일
-            .queryParam("topOrgCd","15000"); // 관할 청
-//            .queryParam("orgCd", "15163"); // 고용 센터
+            .queryParam("topOrgCd","15000") // 관할 청
+            .queryParam("orgCd", "15163"); // 고용 센터
 
     String uri = builder.build(true).encode().toUriString();
 
