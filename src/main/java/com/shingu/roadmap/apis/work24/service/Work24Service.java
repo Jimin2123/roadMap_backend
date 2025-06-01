@@ -1,6 +1,7 @@
 package com.shingu.roadmap.apis.work24.service;
 
 import com.shingu.roadmap.apis.work24.client.Work24Client;
+import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -15,6 +16,10 @@ import java.util.Set;
 public class Work24Service {
 
   private final Work24Client work24Client;
+
+  public EmpPgmListResponse getTrainingPrograms() {
+    return work24Client.getTrainingPrograms(1);
+  }
 
   public List<TrainingCourseResponse.TrainCourseItem> getAllMatchingCourses(List<String> ncsCodes, String address) {
     Set<String> seenTrprIds = new HashSet<>();

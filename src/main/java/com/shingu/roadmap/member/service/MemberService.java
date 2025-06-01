@@ -2,13 +2,7 @@ package com.shingu.roadmap.member.service;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
-import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
-import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
-import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
-import com.shingu.roadmap.apis.saramin.service.SaraminService;
-import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
-import com.shingu.roadmap.apis.work24.service.Work24Service;
 import com.shingu.roadmap.auth.domain.Account;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.member.domain.*;
@@ -27,7 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,8 +33,6 @@ public class MemberService {
     private final CertificateRepository certificateRepository;
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
-    private final Work24Service work24Service;
-    private final SaraminService saraminService;
 
     @Transactional
     public MemberResponse signUp(MemberRequest request) {
@@ -183,54 +174,5 @@ public class MemberService {
         }
 
       return ProfileResponse.from(profile);
-    }
-
-    /**
-     * 회원의 프로필, 보유 기술, 자격증, 희망 직무 정보를 기반으로 맞춤형 직업훈련 과정을 추천합니다.
-     * 추천 과정은 사용 가능한 훈련 과정들에 대해 AI 기반 분석을 통해 생성됩니다.
-     *
-     * @param memberId 훈련 과정을 추천받을 대상 회원의 고유 식별자
-     * @return {@code TrainingCourseResponse.TrainCourseItem} 형태의 추천 훈련 과정 리스트.
-     *         추천이 생성되지 않은 경우 {@code null}을 반환할 수 있습니다.
-     * @throws EntityNotFoundException 지정된 ID를 가진 회원이 존재하지 않거나 삭제된 경우 발생합니다.
-     */
-    public List<TrainingCourseResponse.TrainCourseItem> recommendCoursesForMember(Long memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new EntityNotFoundException("Member not found"));
-
-        Profile profile = member.getProfile();
-
-        if (profile == null) {
-            throw new EntityNotFoundException("Profile not found for member ID: " + memberId);
-        }
-
-        List<String> ncsCodes = profile.getUserCapabilities().stream().map(NcsOccupation::getDutyCd).collect(Collectors.toList());
-        String address = member.getAddress().getAddress();
-        List<TrainingCourseResponse.TrainCourseItem> trainingList = work24Service.getAllMatchingCourses(ncsCodes, address);
-
-        List<GptTrainingCourseDto> trainings = trainingList.stream()
-                .map(item -> new GptTrainingCourseDto(
-                        item.trprId(),
-                        item.ncsCd(),
-                        item.title(),
-                        item.address()
-                ))
-                .toList();
-
-        ProfileResponse profileResponse = ProfileResponse.from(profile);
-        TrainingRecommendationRequest request = new TrainingRecommendationRequest(profileResponse, trainings, address);
-
-        Set<String> aiResponse = openAiService.recommendTrainingCourse(request).block();
-        if (CollectionUtils.isEmpty(aiResponse)) {
-            throw new RuntimeException("No training courses found for member ID: " + memberId);
-        }
-
-        return trainingList.stream()
-                .filter(item -> aiResponse.contains(item.trprId()))
-                .collect(Collectors.toList());
-    }
-
-    public SaraminJobListResponse test() {
-        return saraminService.getJobList("개발자");
     }
 }

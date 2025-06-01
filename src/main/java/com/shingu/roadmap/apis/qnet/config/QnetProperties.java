@@ -1,4 +1,4 @@
-package com.shingu.roadmap.apis.work24.config;
+package com.shingu.roadmap.apis.qnet.config;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -6,19 +6,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 @Validated
-@ConfigurationProperties(prefix = "work24")
+@ConfigurationProperties(prefix = "qnet")
 @Data
-public class Work24Properties {
+public class QnetProperties {
 
   @NotBlank
-  String trainingCourseUrl;
+  String baseUrl;
 
   @NotBlank
-  String trainingCourseKey;
-
-  @NotBlank
-  String skillUpUrl;
-
-  @NotBlank
-  String skillUpKey;
+  String serviceKey;
 }
