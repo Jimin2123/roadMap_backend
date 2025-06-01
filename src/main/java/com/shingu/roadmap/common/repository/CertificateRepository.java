@@ -1,6 +1,6 @@
-package com.shingu.roadmap.member.repository;
+package com.shingu.roadmap.common.repository;
 
-import com.shingu.roadmap.member.domain.Certificate;
+import com.shingu.roadmap.common.domain.Certificate;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

@@ -4,15 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
-import com.shingu.roadmap.member.domain.Certificate;
-import com.shingu.roadmap.member.domain.Member;
-import com.shingu.roadmap.member.domain.Profile;
-import com.shingu.roadmap.member.domain.Skill;
-import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -21,7 +15,6 @@ import reactor.core.publisher.Mono;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor

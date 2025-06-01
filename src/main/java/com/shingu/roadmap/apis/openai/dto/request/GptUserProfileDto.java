@@ -1,13 +1,11 @@
 package com.shingu.roadmap.apis.openai.dto.request;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
-import com.shingu.roadmap.member.domain.Certificate;
+import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.member.domain.Skill;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 public record GptUserProfileDto(
         String educationLevel,

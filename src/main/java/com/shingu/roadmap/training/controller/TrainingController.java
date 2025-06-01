@@ -1,5 +1,6 @@
 package com.shingu.roadmap.training.controller;
 
+import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.training.service.TrainingService;
@@ -31,5 +32,11 @@ public class TrainingController implements TrainingControllerSwagger {
   @GetMapping("/api/v1/training/programs")
   public EmpPgmListResponse getTrainingPrograms() {
     return trainingService.getTrainingPrograms();
+  }
+
+  @Override
+  @GetMapping("/api/v1/certificate/exam-schedule")
+  public QnetExamScheduleResponse getQnetExamSchedule() {
+    return trainingService.getQnetExamSchedule();
   }
 }

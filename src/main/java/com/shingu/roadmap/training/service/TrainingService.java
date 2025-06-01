@@ -4,6 +4,8 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
+import com.shingu.roadmap.apis.qnet.service.QnetService;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
@@ -26,6 +28,7 @@ public class TrainingService {
   private final MemberRepository memberRepository;
   private final Work24Service work24Service;
   private final OpenAiService openAiService;
+  private final QnetService qnetService;
 
   /**
    * 회원의 프로필, 보유 기술, 자격증, 희망 직무 정보를 기반으로 맞춤형 직업훈련 과정을 추천합니다.
@@ -74,5 +77,9 @@ public class TrainingService {
 
   public EmpPgmListResponse getTrainingPrograms() {
     return work24Service.getTrainingPrograms();
+  }
+
+  public QnetExamScheduleResponse getQnetExamSchedule() {
+    return qnetService.getExamSchedule("T", "1320");
   }
 }

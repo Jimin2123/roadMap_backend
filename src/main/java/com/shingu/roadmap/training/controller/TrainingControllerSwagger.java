@@ -1,5 +1,6 @@
 package com.shingu.roadmap.training.controller;
 
+import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
@@ -52,4 +53,17 @@ public interface TrainingControllerSwagger {
           }
   )
   EmpPgmListResponse getTrainingPrograms();
+
+  @Operation(
+          summary = "국가자격 시험일정 목록 조회",
+          description = "공공포털 데이터 API를 통해 국가자격 시험일정 목록을 조회합니다.",
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "시험 일정 조회 성공",
+                          content = @Content(schema = @Schema(implementation = QnetExamScheduleResponse.class))
+                  )
+          }
+  )
+  QnetExamScheduleResponse getQnetExamSchedule();
 }
