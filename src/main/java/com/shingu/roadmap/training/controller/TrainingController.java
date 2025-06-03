@@ -29,9 +29,9 @@ public class TrainingController implements TrainingControllerSwagger {
   }
 
   @Override
-  @GetMapping("/api/v1/training/programs")
-  public EmpPgmListResponse getTrainingPrograms() {
-    return trainingService.getTrainingPrograms();
+  @GetMapping("/api/v1/training/{id}/programs")
+  public EmpPgmListResponse getTrainingPrograms(@PathVariable Long id) {
+    return trainingService.getTrainingPrograms(id);
   }
 
   @Override

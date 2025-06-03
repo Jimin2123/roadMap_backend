@@ -52,7 +52,7 @@ public interface TrainingControllerSwagger {
                   )
           }
   )
-  EmpPgmListResponse getTrainingPrograms();
+  EmpPgmListResponse getTrainingPrograms(Long id);
 
   @Operation(
           summary = "국가자격 시험일정 목록 조회",

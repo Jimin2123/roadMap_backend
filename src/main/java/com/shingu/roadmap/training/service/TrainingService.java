@@ -9,10 +9,12 @@ import com.shingu.roadmap.apis.qnet.service.QnetService;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
+import com.shingu.roadmap.member.domain.Address;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
+import com.shingu.roadmap.training.repository.EmploymentCenter;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TrainingService {
   private final MemberRepository memberRepository;
+  private final EmploymentCenter employmentCenterRepository;
   private final Work24Service work24Service;
   private final OpenAiService openAiService;
   private final QnetService qnetService;
@@ -75,7 +78,15 @@ public class TrainingService {
             .collect(Collectors.toList());
   }
 
-  public EmpPgmListResponse getTrainingPrograms() {
+  public EmpPgmListResponse getTrainingPrograms(Long memberId) {
+//    Member member = memberRepository.findById(memberId)
+//            .orElseThrow(() -> new EntityNotFoundException("Member not found"));
+//
+//    Address address = member.getAddress();
+//    if (address == null) {
+//      throw new EntityNotFoundException("Address not found for member ID: " + memberId);
+//    }
+
     return work24Service.getTrainingPrograms();
   }
 
