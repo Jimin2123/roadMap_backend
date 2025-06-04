@@ -20,7 +20,7 @@ public record AddressResponse(
         String regionCity,
 
         @Schema
-        String zoncode
+        String zonecode
 ) {
   public static AddressResponse from(Address address) {
     if (address == null) return null;
@@ -30,7 +30,7 @@ public record AddressResponse(
             address.getAddressJibun(),
             address.getAddressDetail(),
             address.getRegionCity(),
-            address.getZoncode()
+            address.getZonecode()
     );
   }
 }

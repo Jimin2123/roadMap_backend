@@ -17,5 +17,5 @@ public record AddressRequest(
         String regionCity,
 
         @Schema(description = "우편번호", example = "12345")
-        String zoncode
+        String zonecode
 ) { }

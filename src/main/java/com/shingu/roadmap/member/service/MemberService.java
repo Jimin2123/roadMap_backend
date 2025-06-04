@@ -57,7 +57,7 @@ public class MemberService {
                 addrReq.addressJibun(),
                 addrReq.addressDetail(),
                 addrReq.regionCity(),
-                addrReq.zoncode(),
+                addrReq.zonecode(),
                 null
         );
 
