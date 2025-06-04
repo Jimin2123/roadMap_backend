@@ -14,7 +14,6 @@ public record YouthPolicyListResponse(
 
         @Schema(description = "결과 DTO")
         ResultResponse result
-
 ) {
   @Schema(description = "결과 DTO")
   public record ResultResponse(
