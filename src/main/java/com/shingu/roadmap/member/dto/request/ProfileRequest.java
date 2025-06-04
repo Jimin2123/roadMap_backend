@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.dto.request;
 
+import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.common.enums.EducationLevelType;
 import com.shingu.roadmap.member.domain.Profile;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -9,8 +10,8 @@ import java.util.Set;
 @Schema(description = "회원 프로필 등록 요청 DTO")
 public record ProfileRequest(
 
-        @Schema(description = "희망 직무", example = "백엔드 개발자")
-        String desiredJob,
+        @Schema(description = "희망 직무 코드", example = "[84, 85]" )
+        Set<Integer> desiredJobCodes,
 
         @Schema(description = "전공", example = "컴퓨터공학")
         String major,

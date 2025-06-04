@@ -3,6 +3,8 @@ package com.shingu.roadmap.member.service;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
+import com.shingu.roadmap.apis.saramin.repository.SaraminJobRepository;
 import com.shingu.roadmap.auth.domain.Account;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.common.domain.Certificate;
@@ -34,6 +36,7 @@ public class MemberService {
     private final CertificateRepository certificateRepository;
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
+    private final SaraminJobRepository saraminJobRepository;
 
     @Transactional
     public MemberResponse signUp(MemberRequest request) {
@@ -85,14 +88,14 @@ public class MemberService {
                 .orElseThrow(() -> new EntityNotFoundException("Member not found"));
 
         Profile profile = new Profile(
-                null,
-                request.educationLevel().name(),
-                request.major(),
-                request.desiredJob(),
-                new HashSet<>(), // certificates
-                new HashSet<>(), // skills
-                new HashSet<>(), // desiredCapabilities
-                new HashSet<>()  // userCapabilities
+                null,                                 // id (auto)
+                request.educationLevel().name(),      // 학력
+                request.major(),                      // 전공
+                new HashSet<>(),                           // ★ 희망 직무(FK)
+                new HashSet<>(),                      // certificates
+                new HashSet<>(),                      // skills
+                new HashSet<>(),                      // desiredCapabilities
+                new HashSet<>()                       // userCapabilities
         );
 
         // 사용자 보유 기술 등록
@@ -142,8 +145,42 @@ public class MemberService {
         }
 
         // 희망 직무 기반 NCS 코드 추천
-        if(request.desiredJob() != null) {
-            Set<String> recommendedNcsCodes = openAiService.recommendDesiredJobCodeUsingAssistant(request.desiredJob()).block();
+
+        /* --------------- 희망 직무 기반 NCS 추천 (N:1) --------------- */
+        if (!profile.getDesiredJobs().isEmpty()) {
+
+            Set<String> ncsCandidates = new HashSet<>();
+
+            for (SaraminJob job : profile.getDesiredJobs()) {
+                Set<String> rec = openAiService
+                        .recommendDesiredJobCodeUsingAssistant(job.getName())
+                        .block();                    // Mono<Set<String>>
+
+                if (!CollectionUtils.isEmpty(rec)) {
+                    ncsCandidates.addAll(rec);      // 누적
+                }
+            }
+
+            if (!ncsCandidates.isEmpty()) {
+                Set<NcsOccupation> valid = ncsApiService.filterValidNcsCodes(ncsCandidates);
+
+                profile.getDesiredCapabilities().clear();
+                profile.getDesiredCapabilities().addAll(valid);
+            }
+        }
+
+        if (!CollectionUtils.isEmpty(request.desiredJobCodes())) {
+            Set<SaraminJob> jobs = request.desiredJobCodes().stream()
+                    .map(code -> saraminJobRepository.findById(code)
+                            .orElseThrow(() -> new IllegalArgumentException("직무 코드 없음: " + code)))
+                    .collect(Collectors.toSet());
+            profile.getDesiredJobs().addAll(jobs);
+
+            // 희망 직무 이름을 하나의 문자열로 결합
+            String combinedJobNames = jobs.stream().map(SaraminJob::getName).collect(Collectors.joining(", "));
+
+            // OpenAI를 사용하여 희망 직무 이름으로 NCS 코드 추천
+            Set<String> recommendedNcsCodes = openAiService.recommendDesiredJobCodeUsingAssistant(combinedJobNames).block();
 
             if(!CollectionUtils.isEmpty(recommendedNcsCodes)) {
                 Set<NcsOccupation> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
