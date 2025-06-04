@@ -7,6 +7,7 @@ import com.shingu.roadmap.apis.openai.service.OpenAiService;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
+import com.shingu.roadmap.apis.youthPolicy.client.YouthPolicyClient;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TrainingService {
   private final MemberRepository memberRepository;
+  private final YouthPolicyClient youthPolicyClient;
   private final Work24Service work24Service;
   private final OpenAiService openAiService;
 
