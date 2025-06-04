@@ -60,7 +60,7 @@ public interface TrainingControllerSwagger {
                   )
           }
   )
-  EmpPgmListResponse getTrainingPrograms(Long memberId);
+  ResponseEntity<List<EmpPgmListResponse.EmpPgmSchdInvite>> getTrainingProgramsForMember(Long memberId);
 
   @Operation(
           summary = "국가자격 시험일정 목록 조회",
