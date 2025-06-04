@@ -6,6 +6,7 @@ import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -24,7 +25,10 @@ public interface TrainingControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "채용 정보 조회 성공",
-                          content = @Content(schema = @Schema(implementation = SaraminJobListResponse.class))
+                          content = @Content(
+                                  mediaType = "application/json",
+                                  array = @ArraySchema(schema = @Schema(implementation = TrainingCourseResponse.TrainCourseItem.class))
+                          )
                   )
           }
   )
@@ -40,11 +44,14 @@ public interface TrainingControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "교육 추천 조회 성공",
-                          content = @Content(schema = @Schema(implementation = TrainingCourseResponse.class))
+                          content = @Content(
+                                  mediaType = "application/json",
+                                  array = @ArraySchema(schema = @Schema(implementation = TrainingCourseResponse.TrainCourseItem.class))
+                          )
                   )
           }
   )
-  List<TrainingCourseResponse.TrainCourseItem> getCoursesForMember(Long memberId);
+  ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getCoursesForMember(Long memberId);
 
   @Operation(
           summary = "구직자취업역량 강화프로그램 API",
@@ -56,7 +63,10 @@ public interface TrainingControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "프로그램 조회 성공",
-                          content = @Content(schema = @Schema(implementation = EmpPgmListResponse.class))
+                          content = @Content(
+                                  mediaType = "application/json",
+                                  array = @ArraySchema(schema = @Schema(implementation = EmpPgmListResponse.EmpPgmSchdInvite.class))
+                          )
                   )
           }
   )
@@ -76,7 +86,10 @@ public interface TrainingControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "시험 일정 조회 성공",
-                          content = @Content(schema = @Schema(implementation = QnetExamScheduleResponse.class))
+                          content = @Content(
+                                  mediaType = "application/json",
+                                  array = @ArraySchema(schema = @Schema(implementation = QnetExamScheduleResponse.Item.class))
+                          )
                   )
           }
   )
