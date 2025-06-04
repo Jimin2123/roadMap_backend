@@ -90,7 +90,7 @@ public class TrainingService {
     return work24Service.getTrainingPrograms();
   }
 
-  public QnetExamScheduleResponse getQnetExamSchedule() {
-    return qnetService.getExamSchedule("T", "1320");
+  public List<QnetExamScheduleResponse.Item> getQnetExamSchedule(String qualgbcd, String jmcd) {
+    return qnetService.getExamSchedule(qualgbcd,jmcd);
   }
 }
