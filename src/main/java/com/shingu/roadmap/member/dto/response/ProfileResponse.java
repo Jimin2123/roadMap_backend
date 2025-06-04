@@ -1,15 +1,12 @@
 package com.shingu.roadmap.member.dto.response;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
-import com.shingu.roadmap.common.enums.EducationLevelType;
-import com.shingu.roadmap.member.domain.Certificate;
-import com.shingu.roadmap.member.domain.Member;
+import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.domain.Skill;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Schema(description = "회원 프로필 응답 DTO")
 public record ProfileResponse(

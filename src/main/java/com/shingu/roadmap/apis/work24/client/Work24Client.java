@@ -22,21 +22,22 @@ public class Work24Client {
     this.work24Properties = work24Properties;
   }
 
-  public EmpPgmListResponse getTrainingPrograms(int pageNum) {
-
-    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
-
-    String startDate = LocalDate.now().plusDays(3).format(formatter);
-
+  public EmpPgmListResponse getTrainingPrograms(int pageNum, String startDate, String topOrgCd, String orgCd) {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(work24Properties.getSkillUpUrl())
             .queryParam("authKey", work24Properties.getSkillUpKey())
             .queryParam("returnType", "XML")
             .queryParam("startPage", String.valueOf(pageNum))
             .queryParam("display", "100")
-            .queryParam("pgmStdt", startDate) // 과정 시작일
-            .queryParam("topOrgCd","15000") // 관할 청
-            .queryParam("orgCd", "15163"); // 고용 센터
+            .queryParam("pgmStdt", startDate); // 과정 시작일
+
+    if(topOrgCd != null && !topOrgCd.isEmpty()){
+      builder.queryParam("topOrgCd",topOrgCd); // 관할 청
+    }
+
+    if(orgCd != null && !orgCd.isEmpty()) {
+      builder.queryParam("orgCd", orgCd); // 기관 코드
+    }
 
     String uri = builder.build(true).encode().toUriString();
 

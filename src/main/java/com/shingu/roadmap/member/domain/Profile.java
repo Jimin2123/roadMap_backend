@@ -1,6 +1,7 @@
 package com.shingu.roadmap.member.domain;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.common.domain.Certificate;
 import jakarta.persistence.*;
 import lombok.*;
 

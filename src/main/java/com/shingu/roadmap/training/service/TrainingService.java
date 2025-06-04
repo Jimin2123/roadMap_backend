@@ -4,13 +4,17 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.dto.request.GptTrainingCourseDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
+import com.shingu.roadmap.apis.qnet.service.QnetService;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
 import com.shingu.roadmap.apis.work24.service.Work24Service;
+import com.shingu.roadmap.member.domain.Address;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
+import com.shingu.roadmap.training.repository.EmploymentCenterRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,8 +28,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class TrainingService {
   private final MemberRepository memberRepository;
+  private final EmploymentCenterRepository employmentCenterRepository;
   private final Work24Service work24Service;
   private final OpenAiService openAiService;
+  private final QnetService qnetService;
 
   /**
    * 회원의 프로필, 보유 기술, 자격증, 희망 직무 정보를 기반으로 맞춤형 직업훈련 과정을 추천합니다.
@@ -72,7 +78,19 @@ public class TrainingService {
             .collect(Collectors.toList());
   }
 
-  public EmpPgmListResponse getTrainingPrograms() {
-    return work24Service.getTrainingPrograms();
+  public List<EmpPgmListResponse.EmpPgmSchdInvite> getTrainingProgramsForMember(Long memberId) {
+    Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new EntityNotFoundException("Member not found"));
+
+    Address address = member.getAddress();
+    if (address == null) {
+      throw new EntityNotFoundException("Address not found for member ID: " + memberId);
+    }
+
+    return work24Service.getTrainingPrograms(address);
+  }
+
+  public List<QnetExamScheduleResponse.Item> getQnetExamSchedule(String qualgbcd, String jmcd) {
+    return qnetService.getExamSchedule(qualgbcd,jmcd);
   }
 }
