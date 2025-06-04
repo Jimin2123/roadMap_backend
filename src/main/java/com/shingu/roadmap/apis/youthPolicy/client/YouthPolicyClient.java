@@ -1,6 +1,7 @@
 package com.shingu.roadmap.apis.youthPolicy.client;
 
 import com.shingu.roadmap.apis.youthPolicy.config.YouthPolicyProperties;
+import com.shingu.roadmap.apis.youthPolicy.dto.response.YouthPolicyListResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -19,7 +20,7 @@ public class YouthPolicyClient {
     this.restClient = restClient;
   }
 
-  public void getYouthPolicyList(int zoneCode, int pageNum) {
+  public YouthPolicyListResponse getYouthPolicyList(int zoneCode, int pageNum) {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(youthPolicyProperties.getBaseUrl())
             .queryParam("apiKeyNm", youthPolicyProperties.getApiKey())
@@ -29,8 +30,12 @@ public class YouthPolicyClient {
             .queryParam("zipCd", String.valueOf(zoneCode))
             .queryParam("rtnType", "JSON");
 
-    URI uri = builder.build(true).encode().toUri();
+    String uri = builder.build(false).encode().toUriString();
+    System.out.print(uri);
 
-    System.out.println(uri);
+    return restClient.get()
+            .uri(uri)
+            .retrieve()
+            .body(YouthPolicyListResponse.class);
   }
 }
