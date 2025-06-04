@@ -20,7 +20,7 @@ public class TrainingController implements TrainingControllerSwagger {
 
   @Override
   @GetMapping("/api/v1/training")
-  public List<TrainingCourseResponse.TrainCourseItem> getTrainingList() {
+  public ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getTrainingList() {
     return null;
   }
 

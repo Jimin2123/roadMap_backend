@@ -24,7 +24,7 @@ public interface TrainingControllerSwagger {
           responses = {
                   @ApiResponse(
                           responseCode = "200",
-                          description = "채용 정보 조회 성공",
+                          description = "훈련 정보 조회 성공",
                           content = @Content(
                                   mediaType = "application/json",
                                   array = @ArraySchema(schema = @Schema(implementation = TrainingCourseResponse.TrainCourseItem.class))
@@ -32,7 +32,7 @@ public interface TrainingControllerSwagger {
                   )
           }
   )
-  List<TrainingCourseResponse.TrainCourseItem> getTrainingList();
+  ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getTrainingList();
 
   @Operation(
           summary = "사용자 기반 교육 추천",
