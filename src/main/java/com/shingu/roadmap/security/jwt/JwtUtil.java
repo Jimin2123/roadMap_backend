@@ -1,4 +1,4 @@
-package com.shingu.roadmap.utils.JWT;
+package com.shingu.roadmap.security.jwt;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

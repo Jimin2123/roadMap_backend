@@ -1,4 +1,4 @@
-package com.shingu.roadmap.utils.JWT;
+package com.shingu.roadmap.security.jwt;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 

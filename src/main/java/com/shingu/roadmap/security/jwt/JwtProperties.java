@@ -1,4 +1,4 @@
-package com.shingu.roadmap.utils.JWT;
+package com.shingu.roadmap.security.jwt;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
