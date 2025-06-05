@@ -26,12 +26,7 @@ public class AuthController implements AuthControllerSwagger {
   ) {
     LoginResponse tokens = authService.login(loginRequest);
 
-    Cookie refreshTokenCookie = new Cookie("refreshToken", tokens.refreshToken());
-    refreshTokenCookie.setHttpOnly(true);
-    refreshTokenCookie.setSecure(false); // HTTPS 환경이면 true
-    refreshTokenCookie.setPath("/");
-    refreshTokenCookie.setMaxAge(7 * 24 * 60 * 60); // 7일
-
+    Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), response);
     response.addCookie(refreshTokenCookie);
 
     return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
@@ -42,7 +37,23 @@ public class AuthController implements AuthControllerSwagger {
   public ResponseEntity<LoginResponse> refreshToken(HttpServletRequest request, HttpServletResponse response) {
     String refreshToken = extractRefreshTokenFromCookie(request);
     LoginResponse tokens = authService.refreshToken(refreshToken);
+    if(tokens.refreshToken() != null) {
+      Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), response);
+      response.addCookie(refreshTokenCookie);
+
+      return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
+    }
     return ResponseEntity.ok(tokens);
+  }
+
+  private Cookie setRefreshTokenCookie(String refreshToken, HttpServletResponse response) {
+    Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken);
+    refreshTokenCookie.setHttpOnly(true);
+    refreshTokenCookie.setSecure(false); // HTTPS 환경이면 true
+    refreshTokenCookie.setPath("/");
+    refreshTokenCookie.setMaxAge(7 * 24 * 60 * 60); // 7일
+
+    return refreshTokenCookie;
   }
 
   private String extractRefreshTokenFromCookie(HttpServletRequest request) {
