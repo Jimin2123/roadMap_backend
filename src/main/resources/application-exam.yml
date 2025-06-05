@@ -58,3 +58,14 @@ qnet:
 saramin:
   api-key: ${SARAMIN_API_KEY}
   base-url: https://oapi.saramin.co.kr/job-search
+
+jwt:
+  secret-key: ${JWT_SECRET}
+  issuer: ${TOKEN_ISSUER}
+  access-token:
+    secret-key: ${JWT_ACCESS_TOKEN_SECRET_KEY}
+    expiration: ${JWT_ACCESS_TOKEN_EXPIRATION_TIME}
+  refresh-token:
+    secret-key: ${JWT_REFRESH_TOKEN_SECRET_KEY}
+    expiration: ${JWT_REFRESH_TOKEN_EXPIRATION_TIME}
+  audience: ${TOKEN_AUDIENCE}
