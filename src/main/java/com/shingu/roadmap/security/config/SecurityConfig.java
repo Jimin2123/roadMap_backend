@@ -28,8 +28,9 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(req -> req
                     .requestMatchers(
-                            "/api/v1/auth/login",
+                            "/api/v1/auth/login", // 로그인
                             "/api/v1/member", // 회원 가입
+                            "/api/v1/auth/refreshToken", // 리프레시 토큰
                             "/api-docs/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",

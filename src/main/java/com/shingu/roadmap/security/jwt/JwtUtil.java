@@ -59,6 +59,15 @@ public class JwtUtil {
     return parseClaims("refresh", refreshToken).getSubject();
   }
 
+  public boolean isValidRefreshToken(String refreshToken) {
+    try {
+      verifyRefreshToken(refreshToken);
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
   public Claims parseClaims(String tokenType,String token) {
     String secretKey = "access".equals(tokenType)
             ? jwtProperties.getAccessToken().getSecretKey()
