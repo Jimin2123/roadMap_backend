@@ -3,10 +3,10 @@ package com.shingu.roadmap.security.jwt;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.security.Key;
 import java.util.Date;
 
@@ -24,7 +24,7 @@ public class JwtUtil {
     JwtProperties.TokenProperties tokenProperties =
             "access".equals(tokenType) ? jwtProperties.getAccessToken() : jwtProperties.getRefreshToken();
 
-    Key key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(tokenProperties.getSecretKey()));
+    Key key = Keys.hmacShaKeyFor(tokenProperties.getSecretKey().getBytes(StandardCharsets.UTF_8));
 
     Claims claims = Jwts.claims();
     claims.put("memberId", payload.memberId());
@@ -64,7 +64,7 @@ public class JwtUtil {
             ? jwtProperties.getAccessToken().getSecretKey()
             : jwtProperties.getRefreshToken().getSecretKey();
 
-    Key key = Keys.hmacShaKeyFor(Decoders.BASE64.decode(secretKey));
+    Key key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
 
     return Jwts.parserBuilder()
             .setSigningKey(key)
