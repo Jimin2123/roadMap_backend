@@ -20,6 +20,7 @@ import com.shingu.roadmap.member.repository.SkillRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -37,15 +38,17 @@ public class MemberService {
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
     private final SaraminJobRepository saraminJobRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public MemberResponse signUp(MemberRequest request) {
 
         LoginRequest accReq = request.loginRequest();
+        String encodedPassword = passwordEncoder.encode(accReq.password());
         Account account = new Account(
                 null,
                 accReq.email(),
-                accReq.password(),
+                encodedPassword,
                 null,
                 null
         );

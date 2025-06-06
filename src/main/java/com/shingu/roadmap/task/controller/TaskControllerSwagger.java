@@ -1,11 +1,13 @@
 package com.shingu.roadmap.task.controller;
 
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 
@@ -27,12 +29,12 @@ public interface TaskControllerSwagger {
   )
   ResponseEntity<SaraminJobListResponse> getJobList(int page);
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "사용자 맞춤 채용 정보 조회",
           description = "사람인 API를 통해 사용자 맞춤 채용 정보를 조회합니다.",
           parameters = {
                   @Parameter(name = "page", description = "조회 시작 위치", example = "0"),
-                  @Parameter(name = "memberId", description = "회원 ID", example = "1")
           },
           responses = {
                   @ApiResponse(
@@ -42,7 +44,7 @@ public interface TaskControllerSwagger {
                   )
           }
   )
-  ResponseEntity<SaraminJobListResponse> getJobListForMember(int page, Long memberId);
+  ResponseEntity<SaraminJobListResponse> getJobListForMember(CustomUserDetails userDetails,int page);
 
   @Operation(
           summary = "인턴 채용 정보 조회",
