@@ -3,11 +3,13 @@ package com.shingu.roadmap.auth.controller;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.auth.dto.response.LoginResponse;
 import com.shingu.roadmap.auth.service.AuthService;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,7 +28,7 @@ public class AuthController implements AuthControllerSwagger {
   ) {
     LoginResponse tokens = authService.login(loginRequest);
 
-    Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), response);
+    Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), "create");
     response.addCookie(refreshTokenCookie);
 
     return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
@@ -38,7 +40,7 @@ public class AuthController implements AuthControllerSwagger {
     String refreshToken = extractRefreshTokenFromCookie(request);
     LoginResponse tokens = authService.refreshToken(refreshToken);
     if(tokens.refreshToken() != null) {
-      Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), response);
+      Cookie refreshTokenCookie = setRefreshTokenCookie(tokens.refreshToken(), "create");
       response.addCookie(refreshTokenCookie);
 
       return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
@@ -46,13 +48,36 @@ public class AuthController implements AuthControllerSwagger {
     return ResponseEntity.ok(tokens);
   }
 
-  private Cookie setRefreshTokenCookie(String refreshToken, HttpServletResponse response) {
-    Cookie refreshTokenCookie = new Cookie("refreshToken", refreshToken);
-    refreshTokenCookie.setHttpOnly(true);
-    refreshTokenCookie.setSecure(false); // HTTPS 환경이면 true
-    refreshTokenCookie.setPath("/");
-    refreshTokenCookie.setMaxAge(7 * 24 * 60 * 60); // 7일
+  @PostMapping("/api/v1/auth/logout")
+  public ResponseEntity<Void> logout(
+          @AuthenticationPrincipal CustomUserDetails userDetails,
+          HttpServletResponse response
+  ) {
 
+    Long memberId = userDetails.getMemberId();
+
+    authService.logout(memberId);
+
+    Cookie refreshTokenCookie = setRefreshTokenCookie(null, "delete");
+    response.addCookie(refreshTokenCookie);
+
+    return ResponseEntity.ok().build();
+  }
+
+  private Cookie setRefreshTokenCookie(String refreshToken, String type) {
+    Cookie refreshTokenCookie = new Cookie("refreshToken", null);
+    if(type.equals("create") && refreshToken != null) {
+      refreshTokenCookie.setValue(refreshToken);
+      refreshTokenCookie.setHttpOnly(true);
+      refreshTokenCookie.setSecure(false); // HTTPS 환경이면 true
+      refreshTokenCookie.setPath("/");
+      refreshTokenCookie.setMaxAge(7 * 24 * 60 * 60); // 7일
+    }else {
+      refreshTokenCookie.setMaxAge(0);
+      refreshTokenCookie.setHttpOnly(true);
+      refreshTokenCookie.setSecure(false);
+      refreshTokenCookie.setPath("/");
+    }
     return refreshTokenCookie;
   }
 

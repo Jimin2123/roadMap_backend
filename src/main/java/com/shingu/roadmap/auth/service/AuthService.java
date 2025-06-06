@@ -117,4 +117,16 @@ public class AuthService {
 
     return new LoginResponse(newAccessToken, null);
   }
+
+  public void logout(Long memberId) {
+    Member member = memberRepository.findById(memberId)
+            .orElseThrow(() -> new RuntimeException("존재하지 않는 사용자입니다."));
+
+    RefreshToken refreshToken = member.getRefreshToken();
+    if (refreshToken != null) {
+      refreshTokenRepository.delete(refreshToken);
+      member.setRefreshToken(null);
+      memberRepository.save(member);
+    }
+  }
 }
