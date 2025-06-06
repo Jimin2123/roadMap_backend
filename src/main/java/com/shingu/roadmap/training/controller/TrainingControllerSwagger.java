@@ -4,12 +4,14 @@ import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 
@@ -34,12 +36,10 @@ public interface TrainingControllerSwagger {
   )
   ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getTrainingList();
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "사용자 기반 교육 추천",
           description = "사용자 정보 기반 교육 추천을 위한 API입니다.",
-          parameters = {
-                  @Parameter(name = "memberId", description = "회원 ID", example = "1")
-          },
           responses = {
                   @ApiResponse(
                           responseCode = "200",
@@ -51,14 +51,12 @@ public interface TrainingControllerSwagger {
                   )
           }
   )
-  ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getCoursesForMember(Long memberId);
+  ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getCoursesForMember(CustomUserDetails userDetails);
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "구직자취업역량 강화프로그램 API",
           description = "고용24 구직자취업역량 강화프로그램 API를 통해 구직자 취업 역량 강화 프로그램 정보를 조회합니다.",
-          parameters = {
-                  @Parameter(name = "memberId", description = "회원 ID", example = "1")
-          },
           responses = {
                   @ApiResponse(
                           responseCode = "200",
@@ -70,7 +68,7 @@ public interface TrainingControllerSwagger {
                   )
           }
   )
-  ResponseEntity<List<EmpPgmListResponse.EmpPgmSchdInvite>> getTrainingProgramsForMember(Long memberId);
+  ResponseEntity<List<EmpPgmListResponse.EmpPgmSchdInvite>> getTrainingProgramsForMember(CustomUserDetails userDetails);
 
   @Operation(
           summary = "국가자격 시험일정 목록 조회",

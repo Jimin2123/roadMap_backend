@@ -5,8 +5,12 @@ import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.service.MemberService;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -24,26 +28,37 @@ public class MemberController implements MemberControllerSwagger {
     }
 
     @Override
-    @PutMapping("/api/v1/member/{id}/profile")
+    @PutMapping("/api/v1/member/profile")
     public ResponseEntity<MemberResponse> updateProfile(
-            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @RequestBody ProfileRequest profileRequest
     ) {
-        MemberResponse response = memberService.updateProfile(id, profileRequest);
+        Long memberId = userDetails.getMemberId();
+
+        MemberResponse response = memberService.updateProfile(memberId, profileRequest);
         return ResponseEntity.ok(response);
     }
 
     @Override
-    @GetMapping("/api/v1/member/{id}")
-    public ResponseEntity<MemberResponse> getMember(@PathVariable Long id) {
-        MemberResponse response = memberService.getMember(id);
+    @GetMapping("/api/v1/member")
+    public ResponseEntity<MemberResponse> getMember(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        Long memberId = userDetails.getMemberId();
+
+        MemberResponse response = memberService.getMember(memberId);
         return ResponseEntity.ok(response);
     }
 
     @Override
-    @GetMapping("/api/v1/member/{id}/profile")
-    public ResponseEntity<ProfileResponse> getProfile(@PathVariable Long id) {
-        ProfileResponse response =  memberService.getProfile(id);
+    @GetMapping("/api/v1/member/profile")
+    public ResponseEntity<ProfileResponse> getProfile(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+
+    ) {
+        Long memberId = userDetails.getMemberId();
+
+        ProfileResponse response =  memberService.getProfile(memberId);
         return ResponseEntity.ok(response);
     }
 }

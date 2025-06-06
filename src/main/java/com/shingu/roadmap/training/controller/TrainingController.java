@@ -3,9 +3,11 @@ package com.shingu.roadmap.training.controller;
 import com.shingu.roadmap.apis.qnet.dto.response.QnetExamScheduleResponse;
 import com.shingu.roadmap.apis.work24.dto.response.EmpPgmListResponse;
 import com.shingu.roadmap.apis.work24.dto.response.TrainingCourseResponse;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import com.shingu.roadmap.training.service.TrainingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,15 +27,23 @@ public class TrainingController implements TrainingControllerSwagger {
   }
 
   @Override
-  @GetMapping("/api/v1/training/{memberId}/courses")
-  public ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getCoursesForMember(@PathVariable Long memberId) {
+  @GetMapping("/api/v1/training/courses")
+  public ResponseEntity<List<TrainingCourseResponse.TrainCourseItem>> getCoursesForMember(
+          @AuthenticationPrincipal CustomUserDetails userDetails
+  ) {
+    Long memberId = userDetails.getMemberId();
+
     List<TrainingCourseResponse.TrainCourseItem> response = trainingService.recommendCoursesForMember(memberId);
     return ResponseEntity.ok(response);
   }
 
   @Override
-  @GetMapping("/api/v1/training/{memberId}/programs")
-  public ResponseEntity<List<EmpPgmListResponse.EmpPgmSchdInvite>> getTrainingProgramsForMember(@PathVariable Long memberId) {
+  @GetMapping("/api/v1/training/programs")
+  public ResponseEntity<List<EmpPgmListResponse.EmpPgmSchdInvite>> getTrainingProgramsForMember(
+          @AuthenticationPrincipal CustomUserDetails userDetails
+  ) {
+    Long memberId = userDetails.getMemberId();
+
     List<EmpPgmListResponse.EmpPgmSchdInvite> response = trainingService.getTrainingProgramsForMember(memberId);
     return ResponseEntity.ok(response);
   }
