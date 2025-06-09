@@ -35,16 +35,37 @@ springdoc:
     enabled: true # Swagger UI 활성화
 
 work24:
-  traning-cource-url: https://www.work24.go.kr/cm/openApi/call/hr/callOpenApiSvcInfo310L01.do
-  traning-cource-key:
+  training-course-url: https://www.work24.go.kr/cm/openApi/call/hr/callOpenApiSvcInfo310L01.do
+  training-course-key: ${WORK24_TRAINING_API_KEY}
+  skill-up-url: https://www.work24.go.kr/cm/openApi/call/wk/callOpenApiSvcInfo217L01.do
+  skill-up-key: ${WORK24_SKILL_UP_API_KEY}
 
 openai:
   api-key: ${OPENAI_API_KEY}
   base-url: https://api.openai.com/v1
   model: gpt-4o
-  ncs-code-assistant-id:
+  ncs-code-assistant-id: ${NCS_CODE_ASSISTANT_ID}
   temperature: 0.7
 
 ncs:
   service-key: ${E_NCS_SERVICE_KEY}
   base-url: https://www.ncs.go.kr/api
+
+qnet:
+  base-url: http://apis.data.go.kr/B490007/qualExamSchd/getQualExamSchdList
+  service-key: ${E_NCS_SERVICE_KEY}
+
+saramin:
+  api-key: ${SARAMIN_API_KEY}
+  base-url: https://oapi.saramin.co.kr/job-search
+
+jwt:
+  secret-key: ${JWT_SECRET}
+  issuer: ${TOKEN_ISSUER}
+  access-token:
+    secret-key: ${JWT_ACCESS_TOKEN_SECRET_KEY}
+    expiration: ${JWT_ACCESS_TOKEN_EXPIRATION_TIME}
+  refresh-token:
+    secret-key: ${JWT_REFRESH_TOKEN_SECRET_KEY}
+    expiration: ${JWT_REFRESH_TOKEN_EXPIRATION_TIME}
+  audience: ${TOKEN_AUDIENCE}

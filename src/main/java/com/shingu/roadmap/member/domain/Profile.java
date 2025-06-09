@@ -1,6 +1,8 @@
 package com.shingu.roadmap.member.domain;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
+import com.shingu.roadmap.common.domain.Certificate;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -22,8 +24,11 @@ public class Profile {
   @Column(length = 100)
   private String major; // 전공 (예: 컴퓨터공학, 경영학 등)
 
-  @Column(length = 100)
-  private String desiredJob; // 희망 직무 (예: 소프트웨어 개발자, 데이터 분석가 등)
+  @ManyToMany
+  @JoinTable(name = "profile_desired_job",
+          joinColumns = @JoinColumn(name = "profile_id"),
+          inverseJoinColumns = @JoinColumn(name = "job_code"))
+  private Set<SaraminJob> desiredJobs = new HashSet<>();
 
   @ManyToMany
   @JoinTable(

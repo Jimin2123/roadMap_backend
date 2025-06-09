@@ -4,14 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
-import com.shingu.roadmap.member.domain.Certificate;
-import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
-import com.shingu.roadmap.member.domain.Skill;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +17,6 @@ import reactor.core.publisher.Mono;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -96,7 +91,7 @@ public class OpenAiService {
 
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
     String userPrompt = String.format(
-            "희망 직무: %s 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
+            "희망 직무: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
             desiredJob
     );
 
@@ -115,6 +110,45 @@ public class OpenAiService {
     return openAiClient.generateAssistantResponse(userPrompt)
             .map(this::extractValidNcsCodes) // 문자열 -> List<String>
             .map(HashSet::new); // List -> Set 변환
+  }
+
+  public Mono<Set<String>> generateKeyword(Profile profile) {
+
+    ProfileResponse dto = ProfileResponse.from(profile);
+
+    String userJson;
+    try {
+      userJson = objectMapper.writeValueAsString(dto);
+    } catch (JsonProcessingException e) {
+      throw new RuntimeException("사용자 JSON 직렬화 실패", e);
+    }
+
+    String systemPrompt = """
+        너는 커리어 분석 전문가야.
+        아래 사용자 정보를 보고, 이 사람의 직무/역량에 적합한 핵심 키워드 목록을 한국어로 뽑아줘.
+        최대 10개 이내로, 중복 없이 Set<String> 배열 형식으로 반환해. 예: ["데이터 분석", "Spring Boot", "REST API"]
+        """;
+
+    String userPrompt = """
+        {
+          "user": %s
+        }
+        """.formatted(userJson);
+
+    List<Map<String, String>> messages = List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+    );
+
+    return openAiClient.generateChatCompletion(messages)
+            .map(response -> {
+              try {
+                return objectMapper.readValue(response, new TypeReference<Set<String>>() {});
+              } catch (JsonProcessingException e) {
+                log.error("GPT 응답 파싱 실패: {}", response);
+                throw new RuntimeException("GPT 응답 파싱 오류", e);
+              }
+            });
   }
 
   public List<String> extractValidNcsCodes(String raw) {

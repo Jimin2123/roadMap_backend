@@ -249,3 +249,112 @@ openAiWebClient.post()
 - `data` 배열에서 `role`이 `assistant`인 메시지를 찾아서 그 내용을 반환합니다.
 - 만약 `assistant`의 응답이 없다면 `[No assistant response]`를 반환합니다.
 - 이렇게 하면 Assistant의 응답 메시지를 비동기적으로 받을 수 있습니다.
+
+---
+
+## JPA 양방향 관계에서 JSON 직렬화 중 발생한 무한 루프로 인해 Jackson이 다음과 같은 중첩 에러
+
+1. "Export identifier [profile_desired_job] encountered more than once"
+2. Document nesting depth (1001) exceeds the maximum allowed (1000, from `StreamWriteConstraints.getMaxNestingDepth()`)
+
+---
+
+### 에러 코드
+
+```java
+package com.shingu.roadmap.member.dto.response;
+
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
+import com.shingu.roadmap.common.domain.Certificate;
+import com.shingu.roadmap.member.domain.Profile;
+import com.shingu.roadmap.member.domain.Skill;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.Set;
+
+@Schema(description = "회원 프로필 응답 DTO")
+public record ProfileResponse(
+
+        @Schema(description = "학력", example = "College")
+        String educationLevel,
+
+        @Schema(description = "전공", example = "컴퓨터공학")
+        String major,
+
+        @Schema(description = "희망 직무 목록")
+        Set<SaraminJob> desiredJob,
+
+        @Schema(description = "자격증 목록")
+        Set<Certificate> certificates,
+
+        @Schema(description = "보유 기술 목록")
+        Set<Skill> skills,
+
+        @Schema(description = "희망 직무 NCS 코드 목록")
+        Set<NcsOccupation> desiredCapabilities,
+
+        @Schema(description = "사용자 NCS 코드 목록")
+        Set<NcsOccupation> userCapabilities
+) {
+        public static ProfileResponse from(Profile profile) {
+                if (profile == null) return null;
+
+                return new ProfileResponse(
+                        profile.getEducationLevel(),
+                        profile.getMajor(),
+                        profile.getDesiredJobs(),
+                        profile.getCertificates(),
+                        profile.getSkills(),
+                        profile.getDesiredCapabilities(),
+                        profile.getUserCapabilities()
+                );
+        }
+}
+```
+
+---
+
+### 에러 발생 원인
+- 문제: ProfileResponse에서 엔티티(SaraminJob 등)를 그대로 JSON으로 반환했기 때문에 생긴 문제였습니다.
+- 직접 JPA Entity를 JSON 응답에 포함하면, Jackson이 엔티티 내부의 연관 관계를 따라가며 모든 연관 객체를 재귀적으로 직렬화하려고 시도합니다.
+
+SaraminJob → SaraminJobGroup → SaraminJob
+```json
+{
+  "desiredJob": [
+    {
+      "name": "게임개발",
+      "group": {
+        "name": "IT개발",
+        "jobs": [
+          {
+            "name": "게임개발",
+            "group": {
+              "name": "IT개발",
+              "jobs": [ ... 무한 반복 ... ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+→ Jackson은 중첩을 끝도 없이 계속하다가 depth=1000 초과 시점에서 에러 발생
+
+---
+
+### 해결된 이유
+DTO로 바꾸면:
+- SaraminJobDto에는 groupName 정도만 포함
+- SaraminJobGroup.jobs 같은 순환 필드 자체를 포함하지 않음
+- JSON 직렬화가 순환 없이 평평한 구조(flat structure)로 끝나기 때문에 안전함
+
+```java
+public record SaraminJobDto(Integer code, String name, String groupName) {
+  public static SaraminJobDto from(SaraminJob job) {
+    return new SaraminJobDto(job.getCode(), job.getName(), job.getGroup().getName());
+  }
+}
+```

@@ -23,4 +23,12 @@ public class RefreshToken {
 
   @Column(nullable = false)
   private Instant expiresAt;
+
+  public void setToken(String token) {
+    this.token = token;
+  }
+
+  public void setExpiresAt(Instant expiresAt) {
+    this.expiresAt = expiresAt;
+  }
 }

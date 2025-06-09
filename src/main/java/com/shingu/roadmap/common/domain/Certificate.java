@@ -1,4 +1,4 @@
-package com.shingu.roadmap.member.domain;
+package com.shingu.roadmap.common.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
