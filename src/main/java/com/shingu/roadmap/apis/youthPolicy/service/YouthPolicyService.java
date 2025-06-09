@@ -13,8 +13,8 @@ import java.util.List;
 public class YouthPolicyService {
   private final YouthPolicyClient youthPolicyClient;
 
-  public List<YouthPolicyItemResponse> getAllYouthPolicies(int page, int size) {
-    YouthPolicyListResponse list = this.youthPolicyClient.getYouthPolicyList(page, size);
+  public List<YouthPolicyItemResponse> getAllYouthPolicies(int page, int size, int zoneCode) {
+    YouthPolicyListResponse list = this.youthPolicyClient.getYouthPolicyList(page, size, zoneCode);
 
     if (list != null && list.result() != null && list.result().youthPolicyList() != null) {
       return list.result().youthPolicyList();

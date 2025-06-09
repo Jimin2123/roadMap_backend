@@ -15,6 +15,6 @@ public class PolicyService {
   private final MemberRepository memberRepository;
 
   public List<YouthPolicyItemResponse> getYouthPolicyList(int page, int size) {
-    return youthPolicyService.getAllYouthPolicies(page, size);
+    return youthPolicyService.getAllYouthPolicies(page, size, 0);
   }
 }

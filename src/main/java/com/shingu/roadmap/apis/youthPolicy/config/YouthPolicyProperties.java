@@ -15,8 +15,4 @@ public class YouthPolicyProperties {
 
   @NotBlank
   private String apiKey;
-
-  // API 키 발급 받으면 지워야 함
-  @NotBlank
-  private String cookie;
 }

@@ -20,18 +20,17 @@ public class YouthPolicyClient {
     this.restClient = restClient;
   }
 
-  public YouthPolicyListResponse getYouthPolicyList(int zoneCode, int pageNum) {
+  public YouthPolicyListResponse getYouthPolicyList(int pageNum, int pageSize, int zoneCode) {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(youthPolicyProperties.getBaseUrl())
             .queryParam("apiKeyNm", youthPolicyProperties.getApiKey())
             .queryParam("pageNum", pageNum)
-            .queryParam("pageSize", 100)
+            .queryParam("pageSize", pageSize)
             .queryParam("pageType", "1")
             .queryParam("zipCd", String.valueOf(zoneCode))
             .queryParam("rtnType", "JSON");
 
     String uri = builder.build(false).encode().toUriString();
-    System.out.print(uri);
 
     return restClient.get()
             .uri(uri)
