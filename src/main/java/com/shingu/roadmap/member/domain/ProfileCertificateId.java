@@ -1,5 +1,6 @@
 package com.shingu.roadmap.member.domain;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -15,6 +16,8 @@ import java.util.Objects;
 public class ProfileCertificateId implements Serializable {
 
   private Long profileId;
+
+  @Column(name = "certificate_jmcd") // 반드시 동일하게 지정
   private String certificateId; // Certificate의 PK는 jmcd(String)
 
   @Override

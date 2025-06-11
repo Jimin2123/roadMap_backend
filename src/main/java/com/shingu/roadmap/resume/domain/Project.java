@@ -1,7 +1,13 @@
 package com.shingu.roadmap.resume.domain;
 
+import com.shingu.roadmap.common.domain.Skill;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -15,7 +21,6 @@ public class Project {
 
   private String name; // 프로젝트 이름
   private String period; // 프로젝트 기간 (예: 2023.01 - 2023.06)
-  private String techStack; // 사용 기술 스택 (예: Java, Spring Boot, React 등)
 
   @Column(length = 2000)
   private String description; // 프로젝트 설명 (최대 2000자)
@@ -23,4 +28,12 @@ public class Project {
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "resume_id")
   private Resume resume;
+
+  @ManyToMany
+  @JoinTable(
+          name = "project_skill",
+          joinColumns = @JoinColumn(name = "project_id"),
+          inverseJoinColumns = @JoinColumn(name = "skill_id")
+  )
+  private Set<Skill> techStack = new HashSet<>();
 }

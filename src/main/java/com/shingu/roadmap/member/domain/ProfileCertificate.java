@@ -14,7 +14,7 @@ public class ProfileCertificate {
   @EmbeddedId
   private ProfileCertificateId id;
 
-  @ManyToOne
+  @ManyToOne(fetch = FetchType.LAZY)
   @MapsId("profileId")
   private Profile profile;
 
