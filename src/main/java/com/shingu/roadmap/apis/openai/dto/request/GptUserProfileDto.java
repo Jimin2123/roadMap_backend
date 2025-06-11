@@ -1,7 +1,6 @@
 package com.shingu.roadmap.apis.openai.dto.request;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
-import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.member.domain.Skill;
@@ -11,7 +10,6 @@ import java.util.List;
 
 public record GptUserProfileDto(
         String educationLevel,
-        String major,
         List<String> desiredJob,
         List<String> certificates,
         List<String> skills,
@@ -21,7 +19,6 @@ public record GptUserProfileDto(
   public static GptUserProfileDto from(ProfileResponse profile) {
     return new GptUserProfileDto(
             profile.educationLevel(),
-            profile.major(),
             profile.desiredJob().stream().map(SaraminJobDto::name).toList(),
             profile.certificates().stream().map(Certificate::getJmfldnm).toList(),
             profile.skills().stream().map(Skill::getName).toList(),
