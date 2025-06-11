@@ -1,5 +1,7 @@
 package com.shingu.roadmap.resume.service;
 
+import com.shingu.roadmap.common.domain.Skill;
+import com.shingu.roadmap.common.repository.SkillRepository;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
@@ -8,15 +10,19 @@ import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ResumeService {
 
   private final MemberService memberService;
+  private final SkillRepository skillRepository;
 
   public MemberResponse createResume(Long memberId, ProfileRequest request) {
     Resume resume = new Resume(
@@ -57,17 +63,23 @@ public class ResumeService {
         }).toList();
     resume.setPortfolios(portfolios);
 
-    // 프로젝트 설정
     List<Project> projects = request.resume().projects().stream()
-        .map(projectRequest -> {
-          Project project = new Project();
-          project.setName(projectRequest.title());
-          project.setPeriod(projectRequest.period());
-          project.setTechStack(Arrays.toString(projectRequest.techStack()));
-          project.setDescription(projectRequest.description());
-          project.setResume(resume);
-          return project;
-        }).toList();
+            .map(projectRequest -> {
+              Set<Skill> projectSkills = projectRequest.techStack().stream()
+                      .map(skillName -> skillRepository.findByName(skillName)
+                              .orElseGet(() -> skillRepository.save(new Skill(null, skillName))))
+                      .collect(Collectors.toSet());
+              Project project = new Project();
+              project.setName(projectRequest.title());
+              project.setPeriod(projectRequest.period());
+              project.setTechStack(projectSkills);
+              project.setDescription(projectRequest.description());
+              project.setResume(resume);
+              return project;
+            })
+            .toList();
+
+
     resume.setProjects(projects);
 
     // 학력 정보 설정

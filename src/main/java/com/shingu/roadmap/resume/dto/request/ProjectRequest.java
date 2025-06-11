@@ -2,6 +2,8 @@ package com.shingu.roadmap.resume.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
+import java.util.Set;
+
 @Schema(description = "프로젝트 등록 요청 DTO")
 public record ProjectRequest(
         @Schema(description = "프로젝트 제목", example = "개인 프로젝트: 쇼핑몰 웹사이트")
@@ -14,5 +16,5 @@ public record ProjectRequest(
         String period,
 
         @Schema(description = "사용 기술", example = "[\"Java\", \"Spring Boot\", \"React\"]")
-        String[] techStack
+        Set<String> techStack
 ) { }
