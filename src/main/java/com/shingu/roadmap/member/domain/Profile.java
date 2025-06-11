@@ -3,6 +3,7 @@ package com.shingu.roadmap.member.domain;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.common.domain.Certificate;
+import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.resume.domain.Resume;
 import jakarta.persistence.*;
 import lombok.*;

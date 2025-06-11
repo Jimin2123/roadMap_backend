@@ -4,8 +4,7 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.member.domain.Profile;
-import com.shingu.roadmap.member.domain.Skill;
-import com.shingu.roadmap.resume.domain.Resume;
+import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 

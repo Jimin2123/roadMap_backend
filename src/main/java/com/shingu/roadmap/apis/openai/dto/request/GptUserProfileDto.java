@@ -3,7 +3,7 @@ package com.shingu.roadmap.apis.openai.dto.request;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.domain.Certificate;
-import com.shingu.roadmap.member.domain.Skill;
+import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 
 import java.util.List;
