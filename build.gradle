@@ -88,6 +88,9 @@ dependencies {
 
     // XML Processing
     implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
+
+    // HTML Parsing
+    implementation 'org.jsoup:jsoup:1.17.2'
 }
 
 tasks.named('test') {

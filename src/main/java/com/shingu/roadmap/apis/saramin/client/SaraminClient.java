@@ -4,12 +4,16 @@ import com.shingu.roadmap.apis.saramin.config.SaraminApiProperties;
 import com.shingu.roadmap.apis.saramin.domain.SaraminRegion;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.common.enums.EducationLevelType;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.util.Objects;
 import java.util.Set;
 
 @Component
@@ -69,5 +73,16 @@ public class SaraminClient {
             .uri(uri)
             .retrieve()
             .body(SaraminJobListResponse.class);
+  }
+
+  public String getCompanyLogo(String href) {
+    try {
+      Document doc = Jsoup.connect(href).get();
+
+      Element ogImage = doc.selectFirst("meta[property=og:image]");
+      return ogImage != null ? ogImage.attr("content") : null;
+    } catch (Exception e) {
+      return null;
+    }
   }
 }

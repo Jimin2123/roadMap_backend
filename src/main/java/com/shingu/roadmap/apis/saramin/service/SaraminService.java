@@ -26,9 +26,9 @@ public class SaraminService {
 
   public SaraminJobListResponse getJobListForMember(int page, String regionName, Profile profile) {
     SaraminRegion region = saraminRegionRepository.findFirstByName(regionName)
-        .orElseThrow(() -> new IllegalArgumentException("Region not found: " + regionName));
+            .orElseThrow(() -> new IllegalArgumentException("Region not found: " + regionName));
 
-//    Set<String> keyword = openAiService.generateKeyword(profile).block();
+    //    Set<String> keyword = openAiService.generateKeyword(profile).block();
 
     Set<Integer> jobCodes = profile.getDesiredJobs().stream().map(SaraminJob::getCode).collect(Collectors.toSet());
     List<SaraminJobGroup> groupCodeList = profile.getDesiredJobs().stream().map(SaraminJob::getGroup).toList();
@@ -36,10 +36,58 @@ public class SaraminService {
 
     EducationLevelType educationLevel = EducationLevelType.valueOf(profile.getEducationLevel());
 
-    return saraminClient.getJobList(null, page, region, groupCodes, jobCodes, educationLevel);
+    SaraminJobListResponse response =  saraminClient.getJobList(null, page, region, groupCodes, jobCodes, educationLevel);
+
+
+    return injectLogoToJobs(response);
   }
 
   public SaraminJobListResponse getJobListForMainPage(int page) {
-    return saraminClient.getJobList(null, page, null, null, null, null);
+    SaraminJobListResponse response = saraminClient.getJobList(null, page, null, null, null, null);
+
+    return injectLogoToJobs(response);
+  }
+
+  private SaraminJobListResponse injectLogoToJobs(SaraminJobListResponse response) {
+    List<SaraminJobListResponse.Jobs.Job> updatedJobs = response.jobs().job().stream()
+            .map(this::injectCompanyLogo)
+            .toList();
+
+    var updatedJobsWrapper = new SaraminJobListResponse.Jobs(
+            response.jobs().count(),
+            response.jobs().start(),
+            response.jobs().total(),
+            updatedJobs
+    );
+
+    return new SaraminJobListResponse(updatedJobsWrapper);
+  }
+
+  private SaraminJobListResponse.Jobs.Job injectCompanyLogo(SaraminJobListResponse.Jobs.Job job) {
+    var oldDetail = job.company().detail();
+    String logoUrl = saraminClient.getCompanyLogo(oldDetail.href());
+
+    var updatedDetail = new SaraminJobListResponse.Jobs.Job.Company.Detail(
+            oldDetail.href(),
+            oldDetail.name(),
+            logoUrl
+    );
+
+    var updatedCompany = new SaraminJobListResponse.Jobs.Job.Company(updatedDetail);
+
+    return new SaraminJobListResponse.Jobs.Job(
+            job.id(),
+            job.url(),
+            job.active(),
+            job.postingTimestamp(),
+            updatedCompany,
+            job.position(),
+            job.keyword(),
+            job.salary(),
+            job.modificationTimestamp(),
+            job.openingTimestamp(),
+            job.expirationTimestamp(),
+            job.closeType()
+    );
   }
 }

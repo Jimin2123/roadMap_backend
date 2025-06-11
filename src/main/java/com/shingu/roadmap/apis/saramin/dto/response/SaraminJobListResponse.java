@@ -80,7 +80,8 @@ public record SaraminJobListResponse(
       ) {
         public record Detail(
                 @Schema(description = "회사 상세 페이지 URL") String href,
-                @Schema(description = "회사명") String name
+                @Schema(description = "회사명") String name,
+                @Schema(description = "회사 로고 이미지 URL") String logoUrl
         ) {}
       }
 
