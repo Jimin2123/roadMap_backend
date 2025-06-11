@@ -1,9 +1,9 @@
 package com.shingu.roadmap.member.dto.request;
 
-import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
+import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.common.enums.EducationLevelType;
-import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.resume.dto.request.ResumeRequest;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
@@ -14,14 +14,17 @@ public record ProfileRequest(
         @Schema(description = "희망 직무 코드", example = "[84, 85]" )
         Set<Integer> desiredJobCodes,
 
+        @Schema(description = "현재 직업", example = "학생")
+        String currentJob,
+
         @Schema(description = "학력", example = "ASSOCIATE_DEGREE", implementation = EducationLevelType.class)
         EducationLevelType educationLevel,
 
         @Schema(description = "보유 기술", example = "[\"Java\", \"Spring\"]")
         Set<String> skills,
 
-        @Schema(description = "자격증", example = "[\"정보처리기사\", \"JLPT 2급\"]")
-        Set<String> certificates,
+        @ArraySchema(schema = @Schema(description = "자격증", implementation = CertificateDTO.class))
+        Set<CertificateDTO> certificates,
 
         @Schema(description = "이력서 정보", implementation = ResumeRequest.class)
         ResumeRequest resume

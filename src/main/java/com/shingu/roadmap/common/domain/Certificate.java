@@ -1,12 +1,17 @@
 package com.shingu.roadmap.common.domain;
 
+import com.shingu.roadmap.member.domain.ProfileCertificate;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -28,4 +33,7 @@ public class Certificate {
 
   @Column(length = 100)
   private String jmfldnm; // 종목명
+
+  @OneToMany(mappedBy = "certificate")
+  private Set<ProfileCertificate> profileCertificates = new HashSet<>();
 }
