@@ -115,28 +115,31 @@ public class MemberService {
 
         // 사용자 보유 국가 자격증 등록
         if (!CollectionUtils.isEmpty(request.certificates())) {
-            Set<Certificate> certificates = request.certificates().stream()
-                    .map(certificateRepository::findByJmfldnm)
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
+            profile.getProfileCertificates().clear();
+
+            Set<ProfileCertificate> newCertificates = request.certificates().stream()
+                    .map(certReq -> {
+                        Certificate certificate = certificateRepository.findByJmfldnm(certReq.name())
+                                .orElseThrow(() -> new RuntimeException("자격증을 찾을 수 없습니다: " + certReq.name()));
+                        return new ProfileCertificate(profile, certificate, certReq.year());
+                    })
                     .collect(Collectors.toSet());
 
-            profile.getCertificates().clear();
-            profile.getCertificates().addAll(certificates);
+            profile.getProfileCertificates().addAll(newCertificates);
         } else {
-            profile.getCertificates().clear();
+            profile.getProfileCertificates().clear();
         }
 
         // 사용자 정보 기반 NCS 코드 추천
         if(!CollectionUtils.isEmpty(profile.getSkills()) &&
-                !CollectionUtils.isEmpty(profile.getCertificates())) {
+                !CollectionUtils.isEmpty(profile.getProfileCertificates())) {
 
             // 기술 및 자격증 이름 추출
             Set<String> skillNames = profile.getSkills().stream()
                     .map(Skill::getName)
                     .collect(Collectors.toSet());
-            Set<String> certificateNames = profile.getCertificates().stream()
-                    .map(Certificate::getJmfldnm)
+            Set<String> certificateNames = profile.getProfileCertificates().stream()
+                    .map(pc -> pc.getCertificate().getJmfldnm())
                     .collect(Collectors.toSet());
 
             Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(skillNames, certificateNames, resume).block();
@@ -157,10 +160,10 @@ public class MemberService {
             for (SaraminJob job : profile.getDesiredJobs()) {
                 Set<String> rec = openAiService
                         .recommendDesiredJobCodeUsingAssistant(job.getName())
-                        .block();                    // Mono<Set<String>>
+                        .block();
 
                 if (!CollectionUtils.isEmpty(rec)) {
-                    ncsCandidates.addAll(rec);      // 누적
+                    ncsCandidates.addAll(rec);// 누적
                 }
             }
 

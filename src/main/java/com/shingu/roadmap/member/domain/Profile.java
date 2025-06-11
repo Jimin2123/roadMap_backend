@@ -29,13 +29,8 @@ public class Profile {
           inverseJoinColumns = @JoinColumn(name = "job_code"))
   private Set<SaraminJob> desiredJobs = new HashSet<>();
 
-  @ManyToMany
-  @JoinTable(
-          name = "profile_certificate",
-          joinColumns = @JoinColumn(name = "profile_id"),
-          inverseJoinColumns = @JoinColumn(name = "certificate_id")
-  )
-  private Set<Certificate> certificates = new HashSet<>(); // 보유 자격증
+  @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+  private Set<ProfileCertificate> profileCertificates = new HashSet<>();
 
   @ManyToMany
   @JoinTable(
@@ -60,10 +55,6 @@ public class Profile {
           inverseJoinColumns = @JoinColumn(name = "ncs_code")
   )
   private Set<NcsOccupation> userCapabilities = new HashSet<>(); // 보유 NCS 코드
-
-  public void addSkill(Skill skill) {
-    skills.add(skill);
-  }
 
   @OneToOne(cascade = CascadeType.ALL)
   @JoinColumn(name = "resume_id")

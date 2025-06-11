@@ -10,6 +10,9 @@ public record MemberResponse(
         @Schema(description = "회원 ID", example = "1")
         Long id,
 
+        @Schema(description = "회원 이메일", example = "test@example.com")
+        String email,
+
         @Schema(description = "회원 이름", example = "홍길동")
         String name,
 
@@ -28,6 +31,7 @@ public record MemberResponse(
         public static MemberResponse from(Member member) {
                 return new MemberResponse(
                         member.getId(),
+                        member.getAccount().getEmail(),
                         member.getName(),
                         member.getBirthDate(),
                         member.getPhoneNumber(),

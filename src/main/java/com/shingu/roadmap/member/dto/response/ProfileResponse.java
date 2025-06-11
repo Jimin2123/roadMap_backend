@@ -2,7 +2,7 @@ package com.shingu.roadmap.member.dto.response;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
-import com.shingu.roadmap.common.domain.Certificate;
+import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
@@ -21,7 +21,7 @@ public record ProfileResponse(
         Set<SaraminJobDto> desiredJob,
 
         @Schema(description = "자격증 목록")
-        Set<Certificate> certificates,
+        Set<CertificateDTO> certificates,
 
         @Schema(description = "보유 기술 목록")
         Set<Skill> skills,
@@ -41,7 +41,7 @@ public record ProfileResponse(
                 return new ProfileResponse(
                         profile.getEducationLevel(),
                         profile.getDesiredJobs().stream().map(SaraminJobDto::from).collect(Collectors.toSet()),
-                        profile.getCertificates(),
+                        profile.getProfileCertificates().stream().map(CertificateDTO::from).collect(Collectors.toSet()),
                         profile.getSkills(),
                         profile.getDesiredCapabilities(),
                         profile.getUserCapabilities(),
