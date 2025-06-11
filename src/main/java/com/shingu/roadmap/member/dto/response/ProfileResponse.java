@@ -5,6 +5,8 @@ import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.domain.Skill;
+import com.shingu.roadmap.resume.domain.Resume;
+import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Set;
@@ -15,9 +17,6 @@ public record ProfileResponse(
 
         @Schema(description = "학력", example = "College")
         String educationLevel,
-
-        @Schema(description = "전공", example = "컴퓨터공학")
-        String major,
 
         @Schema(description = "희망 직무 목록")
         Set<SaraminJobDto> desiredJob,
@@ -32,19 +31,22 @@ public record ProfileResponse(
         Set<NcsOccupation> desiredCapabilities,
 
         @Schema(description = "사용자 NCS 코드 목록")
-        Set<NcsOccupation> userCapabilities
+        Set<NcsOccupation> userCapabilities,
+
+        @Schema(description = "이력서 정보")
+        ResumeResponse resume
 ) {
         public static ProfileResponse from(Profile profile) {
                 if (profile == null) return null;
 
                 return new ProfileResponse(
                         profile.getEducationLevel(),
-                        profile.getMajor(),
                         profile.getDesiredJobs().stream().map(SaraminJobDto::from).collect(Collectors.toSet()),
                         profile.getCertificates(),
                         profile.getSkills(),
                         profile.getDesiredCapabilities(),
-                        profile.getUserCapabilities()
+                        profile.getUserCapabilities(),
+                        ResumeResponse.from(profile.getResume())
                 );
         }
 }

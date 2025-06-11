@@ -31,20 +31,6 @@ public interface MemberControllerSwagger {
 
   @SecurityRequirement(name = "bearerAuth")
   @Operation(
-          summary = "사용자 프로필 정보 추가",
-          description = "사용자 프로필 정보를 추가 합니다. 그리고 openAI를 통해 사용자 정보 기반 NCS 코드를 발급해 줍니다.",
-          responses = {
-                  @ApiResponse(
-                          responseCode = "200",
-                          description = "사용자 프로필 추가 성공",
-                          content = @Content(schema = @Schema(implementation = MemberResponse.class))
-                  ),
-          }
-  )
-  ResponseEntity<MemberResponse> updateProfile(CustomUserDetails userDetails, ProfileRequest profileRequest);
-
-  @SecurityRequirement(name = "bearerAuth")
-  @Operation(
           summary = "사용자 정보 조회",
           description = "사용자 정보를 조회합니다.",
           responses = {

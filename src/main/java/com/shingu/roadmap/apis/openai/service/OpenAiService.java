@@ -9,6 +9,7 @@ import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
+import com.shingu.roadmap.resume.domain.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -64,9 +65,9 @@ public class OpenAiService {
 
       userPrompt = """
                   {
-                    "user": %s,
-                    address: %s,
-                    "trainings": %s
+                    "user": [%s],
+                    "address": [%s],
+                    "trainings": [%s]
                   }
                   """.formatted(userJson, request.address(), trainingsJson);
     } catch (JsonProcessingException e) {
@@ -100,11 +101,12 @@ public class OpenAiService {
             .map(HashSet::new); // List -> Set 변환
   }
 
-  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Set<String> skills, Set<String> certificates) {
+  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Set<String> skills, Set<String> certificates, Resume resume) {
     String userPrompt = String.format(
-            "기술스택: [%s], 자격증: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
+            "기술스택: [%s], 자격증: [%s] 이력서: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
             String.join(", ", skills),
-            String.join(", ", certificates)
+            String.join(", ", certificates),
+            resumeToText(resume)
     );
 
     return openAiClient.generateAssistantResponse(userPrompt)
@@ -158,5 +160,51 @@ public class OpenAiService {
       result.add(matcher.group());
     }
     return result;
+  }
+
+  public String resumeToText(Resume resume) {
+    StringBuilder sb = new StringBuilder();
+
+    // Introduction
+    if (resume.getIntroduction() != null) {
+      sb.append("자기소개: ").append(resume.getIntroduction().getContent()).append("\n");
+    }
+
+    // Education
+    if (resume.getEducation() != null) {
+      Education edu = resume.getEducation();
+      sb.append("학력: ").append(edu.getSchool())
+              .append(", 전공: ").append(edu.getMajor())
+              .append(", 기간: ").append(edu.getPeriod())
+              .append(", 상태: ").append(edu.getStatus()).append("\n");
+    }
+
+    // Activities
+    if (resume.getActivities() != null) {
+      sb.append("활동내역:\n");
+      for (Activity a : resume.getActivities()) {
+        sb.append("- ").append(a.getTitle()).append(", ").append(a.getOrganization())
+                .append(", ").append(a.getPeriod()).append(": ").append(a.getDescription()).append("\n");
+      }
+    }
+
+    // Portfolios
+    if (resume.getPortfolios() != null) {
+      sb.append("포트폴리오:\n");
+      for (Portfolio p : resume.getPortfolios()) {
+        sb.append("- ").append(p.getTitle()).append(" (").append(p.getUrl()).append(")\n");
+      }
+    }
+
+    // Projects
+    if (resume.getProjects() != null) {
+      sb.append("프로젝트:\n");
+      for (Project p : resume.getProjects()) {
+        sb.append("- ").append(p.getName()).append(", ").append(p.getPeriod())
+                .append(", 기술스택: ").append(p.getTechStack()).append("\n  설명: ").append(p.getDescription()).append("\n");
+      }
+    }
+
+    return sb.toString();
   }
 }

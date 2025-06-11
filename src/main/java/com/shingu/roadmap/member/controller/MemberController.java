@@ -28,18 +28,6 @@ public class MemberController implements MemberControllerSwagger {
     }
 
     @Override
-    @PutMapping("/api/v1/member/profile")
-    public ResponseEntity<MemberResponse> updateProfile(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestBody ProfileRequest profileRequest
-    ) {
-        Long memberId = userDetails.getMemberId();
-
-        MemberResponse response = memberService.updateProfile(memberId, profileRequest);
-        return ResponseEntity.ok(response);
-    }
-
-    @Override
     @GetMapping("/api/v1/member")
     public ResponseEntity<MemberResponse> getMember(
             @AuthenticationPrincipal CustomUserDetails userDetails

@@ -17,6 +17,7 @@ import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.common.repository.CertificateRepository;
 import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.member.repository.SkillRepository;
+import com.shingu.roadmap.resume.domain.Resume;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -86,19 +87,19 @@ public class MemberService {
     }
 
     @Transactional
-    public MemberResponse updateProfile(Long memberId, ProfileRequest request) {
+    public MemberResponse updateProfile(Long memberId, ProfileRequest request, Resume resume) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new EntityNotFoundException("Member not found"));
 
         Profile profile = new Profile(
-                null,                                 // id (auto)
+                null,                             // id (auto)
                 request.educationLevel().name(),      // 학력
-                request.major(),                      // 전공
-                new HashSet<>(),                           // ★ 희망 직무(FK)
+                new HashSet<>(),                      // ★ 희망 직무(FK)
                 new HashSet<>(),                      // certificates
                 new HashSet<>(),                      // skills
                 new HashSet<>(),                      // desiredCapabilities
-                new HashSet<>()                       // userCapabilities
+                new HashSet<>(),                      // userCapabilities
+                resume
         );
 
         // 사용자 보유 기술 등록
@@ -137,7 +138,7 @@ public class MemberService {
                     .map(Certificate::getJmfldnm)
                     .collect(Collectors.toSet());
 
-            Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(skillNames, certificateNames).block();
+            Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(skillNames, certificateNames, resume).block();
 
             if(!CollectionUtils.isEmpty(recommendedNcsCodes)) {
                 Set<NcsOccupation> validCodes = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
@@ -148,8 +149,6 @@ public class MemberService {
         }
 
         // 희망 직무 기반 NCS 코드 추천
-
-        /* --------------- 희망 직무 기반 NCS 추천 (N:1) --------------- */
         if (!profile.getDesiredJobs().isEmpty()) {
 
             Set<String> ncsCandidates = new HashSet<>();

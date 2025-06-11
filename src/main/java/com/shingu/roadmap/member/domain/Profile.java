@@ -3,6 +3,7 @@ package com.shingu.roadmap.member.domain;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.common.domain.Certificate;
+import com.shingu.roadmap.resume.domain.Resume;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -20,9 +21,6 @@ public class Profile {
 
   @Column(length = 100)
   private String educationLevel; // 학력 수준 (예: 고등학교, 대학교 등)
-
-  @Column(length = 100)
-  private String major; // 전공 (예: 컴퓨터공학, 경영학 등)
 
   @ManyToMany
   @JoinTable(name = "profile_desired_job",
@@ -65,4 +63,8 @@ public class Profile {
   public void addSkill(Skill skill) {
     skills.add(skill);
   }
+
+  @OneToOne(cascade = CascadeType.ALL)
+  @JoinColumn(name = "resume_id")
+  private Resume resume;
 }
