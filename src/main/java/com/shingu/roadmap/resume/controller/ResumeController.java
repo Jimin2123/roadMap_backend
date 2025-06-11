@@ -2,6 +2,7 @@ package com.shingu.roadmap.resume.controller;
 
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import com.shingu.roadmap.resume.service.ResumeService;
 import com.shingu.roadmap.security.model.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
@@ -32,8 +33,13 @@ public class ResumeController implements ResumeControllerSwagger {
 
   @Override
   @GetMapping("/api/v1/resume")
-  public ResponseEntity<Void> getResume() {
-    return null;
+  public ResponseEntity<ResumeResponse> getResume(
+          @AuthenticationPrincipal CustomUserDetails userDetails
+  ) {
+    Long memberId = userDetails.getMemberId();
+
+    ResumeResponse response = resumeService.getResume(memberId);
+    return ResponseEntity.ok(response);
   }
 
   @Override

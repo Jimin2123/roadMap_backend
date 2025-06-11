@@ -2,8 +2,10 @@ package com.shingu.roadmap.resume.service;
 
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.service.MemberService;
 import com.shingu.roadmap.resume.domain.*;
+import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -77,5 +79,11 @@ public class ResumeService {
     resume.setEducation(education);
 
     return memberService.updateProfile(memberId, request, resume);
+  }
+
+  public ResumeResponse getResume(Long memberId) {
+    ProfileResponse memberProfile = memberService.getProfile(memberId);
+
+    return memberProfile.resume();
   }
 }

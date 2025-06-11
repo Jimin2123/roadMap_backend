@@ -2,6 +2,7 @@ package com.shingu.roadmap.resume.controller;
 
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,11 +29,19 @@ public interface ResumeControllerSwagger {
   )
   ResponseEntity<MemberResponse> createResume(CustomUserDetails userDetails, ProfileRequest request);
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "이력서 조회",
-          description = "사용자가 작성한 이력서를 조회합니다."
+          description = "사용자가 작성한 이력서를 조회합니다.",
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "이력서 작성 성공",
+                          content = @Content(schema = @Schema(implementation = ResumeResponse.class))
+                  ),
+          }
   )
-  ResponseEntity<Void> getResume();
+  ResponseEntity<ResumeResponse> getResume(CustomUserDetails userDetails);
 
   @Operation(
           summary = "이력서 수정",
