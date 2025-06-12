@@ -4,6 +4,7 @@ import com.shingu.roadmap.apis.saramin.config.SaraminApiProperties;
 import com.shingu.roadmap.apis.saramin.domain.SaraminRegion;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.common.enums.EducationLevelType;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -15,6 +16,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.net.URI;
 import java.util.Objects;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class SaraminClient {
@@ -34,7 +37,7 @@ public class SaraminClient {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(properties.getBaseUrl())
             .queryParam("access-key", properties.getApiKey())
-            .queryParam("count", 20)
+            .queryParam("count", 21)
             .queryParam("sort", "pd");
 
 //    if(keyword != null && !keyword.isEmpty()) {
@@ -75,14 +78,30 @@ public class SaraminClient {
             .body(SaraminJobListResponse.class);
   }
 
-  public String getCompanyLogo(String href) {
+  public String getCompanyLogo(String url) {
     try {
-      Document doc = Jsoup.connect(href).get();
-
-      Element ogImage = doc.selectFirst("meta[property=og:image]");
-      return ogImage != null ? ogImage.attr("content") : null;
-    } catch (Exception e) {
+      Connection.Response res = Jsoup.connect(url)
+              .header("Range", "bytes=0-16383") // 16 KB
+              .ignoreContentType(true)
+              .method(Connection.Method.GET)
+              .timeout(2_000)
+              .followRedirects(true)
+              .maxBodySize(16 * 1024)
+              .execute();
+      String htmlHead = res.body().split("</head>", 2)[0] + "</head>";
+      return extractOgImage(htmlHead);
+    } catch (Exception ex) {
       return null;
     }
   }
+
+  /** Jsoup 대신 정규식으로 <meta property="og:image" ...> 추출 */
+  private String extractOgImage(String headHtml) {
+    Matcher m = OG_IMAGE_PATTERN.matcher(headHtml);
+    return m.find() ? m.group(1) : null;
+  }
+
+  private static final Pattern OG_IMAGE_PATTERN = Pattern.compile(
+          "<meta[^>]*property=[\"']og:image[\"'][^>]*content=[\"']([^\"']+)[\"'][^>]*>",
+          Pattern.CASE_INSENSITIVE);
 }

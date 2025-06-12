@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Service
@@ -48,19 +51,16 @@ public class SaraminService {
     return injectLogoToJobs(response);
   }
 
-  private SaraminJobListResponse injectLogoToJobs(SaraminJobListResponse response) {
-    List<SaraminJobListResponse.Jobs.Job> updatedJobs = response.jobs().job().stream()
-            .map(this::injectCompanyLogo)
+  private SaraminJobListResponse injectLogoToJobs(SaraminJobListResponse res) {
+    ExecutorService pool = Executors.newFixedThreadPool(21); // 동시에 21개 정도
+    var futures = res.jobs().job().stream()
+            .map(j -> CompletableFuture.supplyAsync(() -> injectCompanyLogo(j), pool))
             .toList();
 
-    var updatedJobsWrapper = new SaraminJobListResponse.Jobs(
-            response.jobs().count(),
-            response.jobs().start(),
-            response.jobs().total(),
-            updatedJobs
-    );
+    List<SaraminJobListResponse.Jobs.Job> updated = futures.stream().map(CompletableFuture::join).toList();
+    pool.shutdown();
 
-    return new SaraminJobListResponse(updatedJobsWrapper);
+    return res.withJobs(updated);
   }
 
   private SaraminJobListResponse.Jobs.Job injectCompanyLogo(SaraminJobListResponse.Jobs.Job job) {

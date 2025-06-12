@@ -11,6 +11,20 @@ public record SaraminJobListResponse(
         Jobs jobs
 ) {
 
+  /**
+   * 기존 메타데이터(count‧start‧total)는 그대로 두고
+   * Job 목록만 교체한 새 인스턴스를 반환한다.
+   */
+  public SaraminJobListResponse withJobs(List<Jobs.Job> newJobList) {
+    Jobs updatedJobs = new Jobs(
+            jobs.count(),      // 기존 값 유지
+            jobs.start(),
+            jobs.total(),
+            newJobList         // ← 새 목록
+    );
+    return new SaraminJobListResponse(updatedJobs);
+  }
+
   @Schema(description = "채용 정보 목록 객체")
   public record Jobs(
 
