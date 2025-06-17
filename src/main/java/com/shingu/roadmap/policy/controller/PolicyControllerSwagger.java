@@ -37,5 +37,5 @@ public interface PolicyControllerSwagger {
                   ),
           }
   )
-  YouthPolicyListResponse getPolicyListByUserInfo(Long id);
+  ResponseEntity<List<YouthPolicyItemResponse>> getPolicyListByUserInfo(Long id);
 }
