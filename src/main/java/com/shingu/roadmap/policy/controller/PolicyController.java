@@ -29,7 +29,8 @@ public class PolicyController implements PolicyControllerSwagger {
 
   @Override
   @GetMapping("/api/v1/policy/{memberId}")
-  public YouthPolicyListResponse getPolicyListByUserInfo(@PathVariable Long memberId) {
-    return null;
+  public ResponseEntity<List<YouthPolicyItemResponse>> getPolicyListByUserInfo(@PathVariable Long memberId) {
+    List<YouthPolicyItemResponse> response = policyService.getYouthPolicyListByUserInfo(memberId);
+    return ResponseEntity.ok(response);
   }
 }

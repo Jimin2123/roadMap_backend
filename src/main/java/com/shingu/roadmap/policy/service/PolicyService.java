@@ -17,4 +17,10 @@ public class PolicyService {
   public List<YouthPolicyItemResponse> getYouthPolicyList(int page, int size) {
     return youthPolicyService.getAllYouthPolicies(page, size, 0);
   }
+
+  public List<YouthPolicyItemResponse> getYouthPolicyListByUserInfo(Long memberId) {
+    return memberRepository.findById(memberId)
+            .map(member -> youthPolicyService.getAllYouthPolicies(1, 4, Integer.parseInt(member.getAddress().getZonecode())))
+            .orElseThrow(() -> new IllegalArgumentException("멤버 ID를 찾을 수 없습니다 : " + memberId));
+  }
 }

@@ -55,6 +55,8 @@ public class SecurityConfig {
                             "/api/v1/jobs", // 채용 공고 조회
                             "/api/v1/internship", // 인턴십 공고 조회
                             "/api/v1/training", // 교육 과정 조회
+                            "/api/v1/policy", // 정책 조회
+                            "/api/v1/policy/*", // 회원별 정책 조회
                             "/api/v1/certificate/exam-schedule", // 자격증 시험 일정 조회
                             "/api-docs/**",
                             "/v3/api-docs/**",
