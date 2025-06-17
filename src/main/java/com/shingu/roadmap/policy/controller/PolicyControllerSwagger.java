@@ -2,10 +2,12 @@ package com.shingu.roadmap.policy.controller;
 
 import com.shingu.roadmap.apis.youthPolicy.dto.response.YouthPolicyItemResponse;
 import com.shingu.roadmap.apis.youthPolicy.dto.response.YouthPolicyListResponse;
+import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
 
@@ -20,12 +22,13 @@ public interface PolicyControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "정책 조회 성공",
-                          content = @Content(schema = @Schema(implementation = YouthPolicyItemResponse.class))
+                          content = @Content(schema = @Schema(implementation = YouthPolicyListResponse.class))
                   ),
           }
   )
-  ResponseEntity<List<YouthPolicyItemResponse>> getYouthPolicyList(int page, int size);
+  ResponseEntity<YouthPolicyListResponse> getYouthPolicyList(int page, int size);
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "사용자 맞춤 정책 조회",
           description = "사용자 정보에 맞는 정책 정보를 조회합니다.",
@@ -37,5 +40,5 @@ public interface PolicyControllerSwagger {
                   ),
           }
   )
-  ResponseEntity<List<YouthPolicyItemResponse>> getPolicyListByUserInfo(Long id);
+  ResponseEntity<YouthPolicyListResponse> getPolicyListByUserInfo(CustomUserDetails userDetails, int page, int size);
 }
