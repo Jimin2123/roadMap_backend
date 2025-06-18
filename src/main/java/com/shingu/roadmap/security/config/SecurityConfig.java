@@ -58,7 +58,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
-            .cors(Customizer.withDefaults())  // 🔥 CORS 활성화
+            .cors(Customizer.withDefaults()) // CORS 설정
             .authorizeHttpRequests(req -> req
                     .requestMatchers(
                             "/api/v1/member", // 회원 가입

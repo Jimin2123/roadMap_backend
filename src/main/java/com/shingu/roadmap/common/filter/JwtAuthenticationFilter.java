@@ -28,32 +28,35 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
   protected void doFilterInternal(HttpServletRequest request,
                                   HttpServletResponse response,
                                   FilterChain filterChain)
-          throws ServletException, IOException
-  {
+          throws ServletException, IOException {
     String authHeader = request.getHeader("Authorization");
-    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-      String token = authHeader.substring(7);
 
-      try {
-        String userId = jwtUtil.verifyAccessToken(token); // subject 값 (memberId)
-        Claims claims = jwtUtil.parseClaims("access", token);
-        String email = (String) claims.get("email");
+    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+      filterChain.doFilter(request, response);
+      return;
+    }
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+    String token = authHeader.substring(7);
 
-        UsernamePasswordAuthenticationToken authentication =
-                new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+    try {
+      String userId = jwtUtil.verifyAccessToken(token); // subject 값 (memberId)
+      Claims claims = jwtUtil.parseClaims("access", token);
+      String email = (String) claims.get("email");
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-      } catch (Exception e) {
-        SecurityContextHolder.clearContext();
+      UserDetails userDetails = userDetailsService.loadUserByUsername(email);
 
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json");
-        response.getWriter().write("{\"error\": \"Invalid or expired token\"}");
+      UsernamePasswordAuthenticationToken authentication =
+              new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
-        return;
-      }
+      SecurityContextHolder.getContext().setAuthentication(authentication);
+    } catch (Exception e) {
+      SecurityContextHolder.clearContext();
+
+      response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+      response.setContentType("application/json");
+      response.getWriter().write("{\"error\": \"Invalid or expired token\"}");
+
+      return;
     }
 
     filterChain.doFilter(request, response);
