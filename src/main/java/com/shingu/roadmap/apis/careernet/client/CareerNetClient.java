@@ -5,7 +5,6 @@ import com.shingu.roadmap.apis.careernet.dto.request.JobEncyclopediaRequest;
 import com.shingu.roadmap.apis.careernet.dto.request.JobInformationRequest;
 import com.shingu.roadmap.apis.careernet.dto.response.JobDetailResponse;
 import com.shingu.roadmap.apis.careernet.dto.response.JobEncyclopediaResponse;
-import com.shingu.roadmap.apis.youthPolicy.dto.response.YouthPolicyListResponse;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -21,11 +20,6 @@ public class CareerNetClient {
     this.restClient = restClient;
   }
 
-  /**
-   * 직업백과 목록 조회
-   * @param request
-   * @return
-   */
   public JobEncyclopediaResponse getJobEncyclopediaList(JobEncyclopediaRequest request) {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(careerNetProperties.getBaseUrl() + "/front/openapi/jobs.json")

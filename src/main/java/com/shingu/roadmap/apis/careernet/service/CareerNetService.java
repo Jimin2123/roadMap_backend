@@ -24,7 +24,7 @@ public class CareerNetService {
 
   /**
    * 직업 상세 정보 조회
-   * @param request
+   * @param JobInformationRequest
    * @return
    */
   public JobDetailResponse getJobInformation(JobInformationRequest request) {
