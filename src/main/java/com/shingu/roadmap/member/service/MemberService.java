@@ -81,6 +81,12 @@ public class MemberService {
         return ProfileResponse.from(profile);
     }
 
+    @Transactional
+    public Member findMemberById(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 회원입니다."));
+    }
+
     // ────────────────────────────────────────────────────────────────────────────────
     // 엔티티 생성 헬퍼
     // ────────────────────────────────────────────────────────────────────────────────

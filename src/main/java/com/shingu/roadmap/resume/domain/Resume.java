@@ -1,9 +1,5 @@
 package com.shingu.roadmap.resume.domain;
 
-import com.shingu.roadmap.resume.dto.request.ActivityRequest;
-import com.shingu.roadmap.resume.dto.request.EducationRequest;
-import com.shingu.roadmap.resume.dto.request.PortfolioRequest;
-import com.shingu.roadmap.resume.dto.request.ProjectRequest;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -25,9 +21,6 @@ public class Resume {
 
   @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Activity> activities;
-
-  @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
-  private List<Portfolio> portfolios;
 
   @OneToMany(mappedBy = "resume", cascade = CascadeType.ALL, orphanRemoval = true)
   private List<Project> projects;

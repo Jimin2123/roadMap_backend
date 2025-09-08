@@ -15,7 +15,9 @@ public class Activity {
 
   private String title; // 활동명
   private String organization; // 소속/기관
-  private String period; // 활동 기간
+
+  @Embedded
+  private Period period; // 활동 기간
 
   @Column(length = 1000)
   private String description; // 활동 내용

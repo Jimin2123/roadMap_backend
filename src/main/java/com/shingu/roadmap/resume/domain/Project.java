@@ -20,10 +20,17 @@ public class Project {
   private Long id;
 
   private String name; // 프로젝트 이름
-  private String period; // 프로젝트 기간 (예: 2023.01 - 2023.06)
+  private String url; // 프로젝트 URL (예: GitHub 링크)
+  private String role; // 프로젝트에서의 역할 (예: 프론트엔드 개발자)
 
   @Column(length = 2000)
   private String description; // 프로젝트 설명 (최대 2000자)
+
+  @Embedded
+  private Period period; // 프로젝트 기간 (예: 2023.01 - 2023.06)
+
+  @ElementCollection // 간단한 문자열 리스트를 저장하기 위한 어노테이션
+  private List<String> achievements = new ArrayList<>(); // 성과 추가
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "resume_id")

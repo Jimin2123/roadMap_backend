@@ -188,14 +188,6 @@ public class OpenAiService {
       }
     }
 
-    // Portfolios
-    if (resume.getPortfolios() != null) {
-      sb.append("포트폴리오:\n");
-      for (Portfolio p : resume.getPortfolios()) {
-        sb.append("- ").append(p.getTitle()).append(" (").append(p.getUrl()).append(")\n");
-      }
-    }
-
     // Projects
     if (resume.getProjects() != null) {
       sb.append("프로젝트:\n");
