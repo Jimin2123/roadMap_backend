@@ -9,6 +9,7 @@ public record EducationResponse(
         String status
 ) {
   public static EducationResponse from(Education e) {
+    if (e == null) return null;
     return new EducationResponse(
             e.getSchool(),
             e.getMajor(),

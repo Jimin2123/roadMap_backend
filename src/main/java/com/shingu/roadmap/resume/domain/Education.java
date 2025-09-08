@@ -5,17 +5,29 @@ import lombok.*;
 
 @Entity
 @Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Builder(toBuilder = true)
+@EqualsAndHashCode(of = "id")
 public class Education {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Column(nullable = false, length = 200)
   private String school; // 학교명
+
+  @Column(length = 200)
   private String major; // 전공
+
   @Embedded
   private Period period; // 재학 기간
-  private String status; // 학력 상태 (예: 졸업, 재학 중, 중퇴 등)
+
+  @Column(length = 50)
+  private String status; // 학력 상태 (졸업, 재학 등)
+
+  /* 필요 시 비즈니스 메서드 */
+  public void updateStatus(String newStatus) {
+    this.status = (newStatus == null || newStatus.isBlank()) ? null : newStatus.trim();
+  }
 }

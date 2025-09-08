@@ -8,12 +8,15 @@ import lombok.*;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @EqualsAndHashCode(of = "id")
 @Table(name = "profile_skill")
+@Builder(toBuilder = true)
 public class ProfileSkill {
 
   @EmbeddedId
-  private ProfileSkillId id;
+  @Builder.Default
+  private ProfileSkillId id = new ProfileSkillId(); // ★ null 금지
 
   @MapsId("profileId")
   @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -31,27 +34,15 @@ public class ProfileSkill {
   @Column(nullable = false, length = 24)
   private SkillProficiency proficiency;
 
+
   @Builder
   private ProfileSkill(Profile profile, Skill skill, SkillProficiency proficiency) {
     if (profile == null || skill == null || proficiency == null)
       throw new IllegalArgumentException("profile/skill/proficiency must not be null");
-    // ⚠ 여기서 id를 즉시 만들지 않고 연관만 세팅
-    this.profile = profile;
-    this.skill = skill;
-    this.proficiency = proficiency;
-  }
 
-  /** 영속화 직전, 연관의 PK를 사용해 복합키를 안전하게 구성 */
-  @PrePersist
-  private void assignIdIfNeeded() {
-    if (this.id == null) {
-      Long profileId = (profile != null) ? profile.getId() : null;
-      Long skillId = (skill != null) ? skill.getId() : null;
-      if (profileId == null || skillId == null) {
-        throw new IllegalStateException("ProfileSkill cannot be persisted with null profileId/skillId");
-      }
-      this.id = new ProfileSkillId(profileId, skillId);
-    }
+    this.profile = profile;   // @MapsId("profileId")가 채움
+    this.skill = skill;       // @MapsId("skillId")가 채움
+    this.proficiency = proficiency;
   }
 
   public void changeProficiency(SkillProficiency p) {
@@ -59,11 +50,10 @@ public class ProfileSkill {
     this.proficiency = p;
   }
 
-  /* ===== 양방향 일관성을 위한 (패키지-프라이빗) 세터 — 필요 시 Profile 편의 메서드에서 호출 ===== */
+  // 편의 세터 (패키지-프라이빗 유지)
   void setProfile(Profile profile) { this.profile = profile; }
   void setSkill(Skill skill) { this.skill = skill; }
 
-  /* ===== 정적 팩토리 (가독성/의도 표현용) ===== */
   public static ProfileSkill of(Profile profile, Skill skill, SkillProficiency proficiency) {
     return ProfileSkill.builder()
             .profile(profile)

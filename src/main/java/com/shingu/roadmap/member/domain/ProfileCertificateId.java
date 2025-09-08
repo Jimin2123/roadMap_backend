@@ -7,16 +7,13 @@ import lombok.*;
 import java.io.Serializable;
 
 @Embeddable
-@Getter
-@NoArgsConstructor
-@AllArgsConstructor
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @EqualsAndHashCode
 public class ProfileCertificateId implements Serializable {
-
   @Column(name = "profile_id", nullable = false)
   private Long profileId;
 
-  /** PK/FK 실제 컬럼명을 엔티티의 @JoinColumn(name="certificate_jmcd")와 일치시킵니다. */
-  @Column(name = "certificate_jmcd", nullable = false)
-  private String certificateId; // Certificate.jmcd
+  @Column(name = "certificate_jmcd", nullable = false) // ← 컬럼명 FK와 일치
+  private String certificateId; // Certificate.jmcd = String
 }

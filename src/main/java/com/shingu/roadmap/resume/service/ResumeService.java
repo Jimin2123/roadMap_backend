@@ -13,8 +13,8 @@ import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.CollectionUtils;
 
-import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -25,109 +25,138 @@ public class ResumeService {
   private final MemberService memberService;
   private final SkillRepository skillRepository;
 
+  /* ============================ Commands ============================ */
+
   @Transactional
   public MemberResponse createResume(Long memberId, ProfileRequest request) {
-    Resume resume = new Resume(
-            null,
-            null,
-            null,
-            null,
-            null
-    );
-    ResumeRequest resumeRequest = request.resume();
+    if (request == null || request.resume() == null) {
+      throw new IllegalArgumentException("ResumeRequest가 없습니다.");
+    }
+    ResumeRequest resumeReq = request.resume();
 
-    // 1. Introduction, Education 엔티티 생성 및 설정
-    resume.setIntroduction(toIntroductionEntity(resumeRequest.introduction()));
-    resume.setEducation(toEducationEntity(resumeRequest.education()));
+    // 1) 빈 Resume 생성 (builder)
+    Resume resume = Resume.builder().build();
 
-    // 2. Activity, Project 엔티티 컬렉션 생성 및 설정 (양방향 연관관계 설정 포함)
-    List<Activity> activities = resumeRequest.activities().stream()
-            .map(activityReq -> toActivityEntity(activityReq, resume))
-            .toList();
+    // 2) Introduction / Education 세팅 (단방향 1:1)
+    if (resumeReq.introduction() != null) {
+      resume.setIntroduction(toIntroduction(resumeReq.introduction()));
+    }
+    if (resumeReq.education() != null) {
+      resume.setEducation(toEducation(resumeReq.education()));
+    }
 
-    List<Project> projects = resumeRequest.projects().stream()
-            .map(projectReq -> toProjectEntity(projectReq, resume))
-            .toList();
+    // 3) Activities / Projects 조립 (양방향은 Resume 편의 메서드로만 연결)
+    if (!CollectionUtils.isEmpty(resumeReq.activities())) {
+      for (ActivityRequest aReq : resumeReq.activities()) {
+        Activity a = toActivity(aReq);
+        resume.addActivity(a); // 내부에서 setResumeInternal 처리
+      }
+    }
 
-    resume.setActivities(activities);
-    resume.setProjects(projects);
+    if (!CollectionUtils.isEmpty(resumeReq.projects())) {
+      for (ProjectRequest pReq : resumeReq.projects()) {
+        Project p = toProjectSkeleton(pReq);     // 기간/기본정보만
+        attachProjectExtras(p, pReq);            // achievements, techStack
+        resume.addProject(p);                    // 내부에서 setResumeInternal 처리
+      }
+    }
 
-    // 3. MemberService를 통해 최종 저장
+    // 4) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
     return memberService.updateProfile(memberId, request, resume);
   }
 
+  /* ============================ Queries ============================ */
+
   @Transactional(readOnly = true)
   public ResumeResponse getResume(Long memberId) {
-    // 1. MemberService를 통해 Member 엔티티를 조회합니다.
     Member member = memberService.findMemberById(memberId);
-
-    // 2. Member 엔티티에서 Resume 엔티티를 가져옵니다.
+    if (member.getProfile() == null) {
+      throw new EntityNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
+    }
     Resume resume = member.getProfile().getResume();
-
-    // 3. 이력서가 존재하지 않을 경우 예외를 발생시킵니다.
     if (resume == null) {
       throw new EntityNotFoundException("해당 회원의 이력서 정보를 찾을 수 없습니다.");
     }
-
-    // 4. Resume 엔티티를 ResumeResponse DTO로 변환하여 반환합니다.
     return ResumeResponse.from(resume);
   }
 
-  // ================= Private Helper Methods for Mapping =================
+  /* ============================ Mappers ============================ */
 
-  private Introduction toIntroductionEntity(IntroductionRequest dto) {
-    Introduction introduction = new Introduction();
-    introduction.setContent(dto.content());
-    return introduction;
+  private Introduction toIntroduction(IntroductionRequest dto) {
+    // 도메인은 updateContent도 있지만 최초 생성은 builder 사용
+    return Introduction.builder()
+            .content(dto != null ? dto.content() : null)
+            .build();
   }
 
-  private Education toEducationEntity(EducationRequest dto) {
-    Education education = new Education();
-    education.setSchool(dto.school());
-    education.setMajor(dto.major());
-    education.setStatus(dto.status());
-    education.setPeriod(toPeriod(dto.period())); // Period 변환
-    return education;
+  private Education toEducation(EducationRequest dto) {
+    if (dto == null) return null;
+    return Education.builder()
+            .school(dto.school())
+            .major(dto.major())
+            .status(dto.status())
+            .period(toPeriod(dto.period()))
+            .build();
   }
 
-  private Activity toActivityEntity(ActivityRequest dto, Resume resume) {
-    Activity activity = new Activity();
-    activity.setTitle(dto.title());
-    activity.setOrganization(dto.organization());
-    activity.setDescription(dto.description());
-    activity.setPeriod(toPeriod(dto.period())); // Period 변환
-    activity.setResume(resume); // 양방향 연관관계 설정
-    return activity;
+  private Activity toActivity(ActivityRequest dto) {
+    if (dto == null) return null;
+    return Activity.builder()
+            .title(dto.title())
+            .organization(dto.organization())
+            .description(dto.description())
+            .period(toPeriod(dto.period()))
+            .build();
   }
 
-  private Project toProjectEntity(ProjectRequest dto, Resume resume) {
-    Project project = new Project();
-    project.setName(dto.name());
-    project.setDescription(dto.description());
-    project.setUrl(dto.url());
-    project.setRole(dto.role());
-    project.setAchievements(dto.achievements());
-    project.setPeriod(toPeriod(dto.period())); // Period 변환
+  /**
+   * Project 골격만 생성 (성과/스택은 별도 attach)
+   */
+  private Project toProjectSkeleton(ProjectRequest dto) {
+    if (dto == null) return null;
+    return Project.builder()
+            .name(dto.name())
+            .url(dto.url())
+            .role(dto.role())
+            .description(dto.description())
+            .period(toPeriod(dto.period()))
+            .build();
+  }
 
-    // "Find or Create" 로직을 사용한 techStack 처리
-    Set<Skill> techStack = dto.techStack().stream()
-            .map(this::findOrCreateSkill)
-            .collect(Collectors.toSet());
-    project.setTechStack(techStack);
+  /**
+   * Project에 achievements/techStack 연결
+   * - achievements: addAchievement로 추가
+   * - techStack: find-or-create 후 Set에 addAll
+   */
+  private void attachProjectExtras(Project project, ProjectRequest dto) {
+    if (project == null || dto == null) return;
 
-    project.setResume(resume); // 양방향 연관관계 설정
-    return project;
+    // achievements
+    if (!CollectionUtils.isEmpty(dto.achievements())) {
+      // 내부 컬렉션은 getAchievements()로 접근
+      project.getAchievements().clear();
+      for (String a : dto.achievements()) {
+        project.addAchievement(a);
+      }
+    }
+
+    // techStack
+    if (!CollectionUtils.isEmpty(dto.techStack())) {
+      Set<Skill> stack = dto.techStack().stream()
+              .map(this::findOrCreateSkill)
+              .collect(Collectors.toSet());
+      project.getTechStack().clear();
+      project.getTechStack().addAll(stack);
+    }
   }
 
   private Skill findOrCreateSkill(String skillName) {
     return skillRepository.findByName(skillName)
-            .orElseGet(() -> skillRepository.save(new Skill(null, skillName)));
+            .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build()));
   }
 
   private Period toPeriod(PeriodRequest dto) {
-    if (dto == null) {
-      return null;
-    }
-    return new Period(dto.startDate(), dto.endDate());
+    if (dto == null) return null;
+    return Period.of(dto.startDate(), dto.endDate()); // 유효성 내장
   }
 }

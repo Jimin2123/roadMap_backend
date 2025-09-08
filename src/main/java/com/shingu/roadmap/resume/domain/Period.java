@@ -1,21 +1,30 @@
 package com.shingu.roadmap.resume.domain;
 
 import jakarta.persistence.Embeddable;
+import jakarta.persistence.Column;
 import java.time.LocalDate;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
-  @Getter
-  @Embeddable // 이 클래스를 다른 엔티티에 삽입할 수 있음을 선언
-  @NoArgsConstructor
-  public class Period {
+@Embeddable
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@Builder(toBuilder = true)
+public class Period {
 
-    private LocalDate startDate; // 시작일
+  @Column(name = "start_date", nullable = false) // 반드시 시작일이 있어야 한다면
+  private LocalDate startDate;
 
-    private LocalDate endDate;   // 종료일 (진행 중이면 null)
+  @Column(name = "end_date")
+  private LocalDate endDate;   // 진행 중이면 null
 
-    public Period(LocalDate startDate, LocalDate endDate) {
-      this.startDate = startDate;
-      this.endDate = endDate;
+  public static Period of(LocalDate start, LocalDate end) {
+    if (start == null) throw new IllegalArgumentException("startDate must not be null");
+    if (end != null && end.isBefore(start)) {
+      throw new IllegalArgumentException("endDate must be >= startDate");
     }
+    return Period.builder().startDate(start).endDate(end).build();
   }
+
+  public boolean isOngoing() { return endDate == null; }
+}

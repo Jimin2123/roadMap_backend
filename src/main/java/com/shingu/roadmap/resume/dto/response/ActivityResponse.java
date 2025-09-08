@@ -9,6 +9,7 @@ public record ActivityResponse(
         String description
 ) {
   public static ActivityResponse from(Activity a) {
+    if (a == null) return null;
     return new ActivityResponse(
             a.getTitle(),
             a.getOrganization(),
