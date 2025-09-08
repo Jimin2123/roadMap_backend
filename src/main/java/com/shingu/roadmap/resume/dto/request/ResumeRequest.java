@@ -14,9 +14,6 @@ public record ResumeRequest(
         @ArraySchema(schema = @Schema(description = "활동내역 목록", implementation = ActivityRequest.class))
         List<ActivityRequest> activities,
 
-        @ArraySchema(schema = @Schema(description = "포트폴리오 목록", implementation = PortfolioRequest.class))
-        List<PortfolioRequest> portfolios,
-
         @ArraySchema(schema = @Schema(description = "프로젝트 목록", implementation = ProjectRequest.class))
         List<ProjectRequest> projects,
 

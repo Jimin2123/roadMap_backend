@@ -15,6 +15,7 @@ public class Education {
 
   private String school; // 학교명
   private String major; // 전공
-  private String period; // 재학 기간
+  @Embedded
+  private Period period; // 재학 기간
   private String status; // 학력 상태 (예: 졸업, 재학 중, 중퇴 등)
 }
