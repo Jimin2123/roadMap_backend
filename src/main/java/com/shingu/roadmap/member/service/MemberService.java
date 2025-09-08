@@ -18,15 +18,19 @@ import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
-import com.shingu.roadmap.resume.domain.Resume;
+import com.shingu.roadmap.resume.domain.*;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -35,7 +39,6 @@ import java.util.stream.Collectors;
 @Transactional
 public class MemberService {
 
-    // 의존성 주입
     private final MemberRepository memberRepository;
     private final SkillRepository skillRepository;
     private final CertificateRepository certificateRepository;
@@ -44,124 +47,237 @@ public class MemberService {
     private final SaraminJobRepository saraminJobRepository;
     private final PasswordEncoder passwordEncoder;
 
-    // ────────────────────────────────────────────────────────────────────────────────
-    // 퍼블릭 유스케이스
-    // ────────────────────────────────────────────────────────────────────────────────
+    /* ====================================================================== */
+    /* Public Usecases                                                        */
+    /* ====================================================================== */
 
-    /** 회원 가입 */
     public MemberResponse signUp(MemberRequest request) {
         Member member = assembleMember(request);
         memberRepository.save(member);
         return MemberResponse.from(member);
     }
 
-    /** 프로필 업데이트 */
+    /**
+     * 프로필 + 이력서(선택) 업데이트
+     * - Resume 하위 엔티티는 도메인 편의 메서드로만 연결(add/set)하도록 권장
+    */
     public MemberResponse updateProfile(Long memberId, ProfileRequest req, Resume resume) {
         Member member = findMember(memberId);
+
+        // 기존 프로필 조립
         Profile profile = assembleProfile(req, resume);
 
+        // 스킬/자격/희망직무/NCS 역량 보강
         enrichWithSkills(req, profile);
         enrichWithCertificates(req, profile);
         enrichWithDesiredJobs(req, profile);
         recommendCapabilities(profile);
 
+        // AI
+        openAiService.recommendSearchCodes(profile)
+                .timeout(Duration.ofSeconds(8))
+                .onErrorResume(e -> Mono.empty())
+                .blockOptional()
+                .ifPresent(codes -> {
+                    profile.updateRecommendedJobInfoCategoryCode(codes.get("jobInfoCategoryCode"));
+                    profile.updateRecommendedJobInfoAbilityCode(codes.get("jobInfoAbilityCode")); // ← abilities에서 선택
+                    profile.updateRecommendedEncyclopediaThemeCode(codes.get("encyclopediaThemeCode"));
+                });
+
         member.setProfile(profile);
         return MemberResponse.from(member);
     }
 
-    /** 단일 회원 조회 */
     public MemberResponse getMember(Long memberId) {
         return MemberResponse.from(findMember(memberId));
     }
 
-    /** 프로필 조회 */
     public ProfileResponse getProfile(Long memberId) {
         Profile profile = findMember(memberId).getProfile();
         if (profile == null) throw new EntityNotFoundException("프로필이 존재하지 않습니다. id=" + memberId);
         return ProfileResponse.from(profile);
     }
 
-    // ────────────────────────────────────────────────────────────────────────────────
-    // 엔티티 생성 헬퍼
-    // ────────────────────────────────────────────────────────────────────────────────
+    public Member findMemberById(Long memberId) {
+        return memberRepository.findById(memberId)
+                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 회원입니다."));
+    }
 
-    /** Member 엔티티 조립 */
+    /* ====================================================================== */
+    /* Assemble Helpers                                                       */
+    /* ====================================================================== */
+
     private Member assembleMember(MemberRequest request) {
         Account account = createAccount(request.loginRequest());
         Address address = createAddress(request.addressRequest());
 
-        return new Member(
-                null,
-                request.name(),
-                "USER", // TODO: Enum 으로 치환 고려
-                request.birthDate(),
-                request.phoneNumber(),
-                account,
-                address,
-                null,
-                null,
-                null
-        );
+        return Member.builder()
+                .name(request.name())
+                .role("USER")
+                .birthDate(request.birthDate())
+                .phoneNumber(request.phoneNumber())
+                .account(account)
+                .address(address)
+                .build();
     }
 
-    /** Account 엔티티 생성 */
     private Account createAccount(LoginRequest req) {
-        return new Account(null, req.email(), passwordEncoder.encode(req.password()), null, null);
+        return Account.builder()
+                .email(req.email())
+                .password(passwordEncoder.encode(req.password()))
+                .build();
     }
 
-    /** Address 엔티티 생성 */
     private Address createAddress(AddressRequest req) {
-        return new Address(null, req.address(), req.addressJibun(), req.addressDetail(), req.regionCity(), req.zonecode(), null);
+        if (req == null) return null;
+        return Address.builder()
+                .address(req.address())
+                .addressJibun(req.addressJibun())
+                .addressDetail(req.addressDetail())
+                .regionCity(req.regionCity())
+                .zonecode(req.zonecode())
+                .build();
     }
 
-    /** Profile 엔티티 기본 뼈대 생성 */
     private Profile assembleProfile(ProfileRequest req, Resume resume) {
-        return new Profile(
-                null,
-                req.educationLevel().name(),
-                new HashSet<>(), // desiredJobs
-                new HashSet<>(), // certificates
-                new HashSet<>(), // skills
-                new HashSet<>(), // desiredCapabilities
-                new HashSet<>(), // userCapabilities
-                resume
-        );
+        return Profile.builder()
+                .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
+                .desiredJobs(new HashSet<>())
+                .profileCertificates(new HashSet<>())
+                .profileSkills(new HashSet<>())
+                .desiredCapabilities(new HashSet<>())
+                .userCapabilities(new HashSet<>())
+                .resume(resume) // ← Resume를 통째로 세팅(도메인 내부 add*/set* 사용해 조립해 들어온 객체)
+                .build();
     }
 
-    // ────────────────────────────────────────────────────────────────────────────────
-    // 프로필 확장(Enrich) 헬퍼
-    // ────────────────────────────────────────────────────────────────────────────────
+    /* ====================================================================== */
+    /* Resume Builders (도메인 일관성 준수)                                    */
+    /* ====================================================================== */
 
-    /** 기술 스킬 추가 */
+    /** Period 안전 생성 */
+    private Period periodOf(LocalDate start, LocalDate end) {
+        return Period.of(start, end);
+    }
+
+    /** Introduction 생성/갱신 */
+    public Introduction buildIntroduction(String content) {
+        return Introduction.builder().content(content).build();
+    }
+
+    /** Education 생성/갱신 */
+    public Education buildEducation(String school, String major, LocalDate start, LocalDate end, String status) {
+        return Education.builder()
+                .school(school)
+                .major(major)
+                .period(periodOf(start, end))
+                .status(status)
+                .build();
+    }
+
+    /** Activity 생성 */
+    public Activity buildActivity(String title, String organization, LocalDate start, LocalDate end, String description) {
+        return Activity.builder()
+                .title(title)
+                .organization(organization)
+                .period(periodOf(start, end))
+                .description(description)
+                .build();
+    }
+
+    /** Project 생성 (성과/스택은 별도 attach 메서드로 연결 권장) */
+    public Project buildProject(String name, String url, String role, String description, LocalDate start, LocalDate end) {
+        return Project.builder()
+                .name(name)
+                .url(url)
+                .role(role)
+                .description(description)
+                .period(periodOf(start, end))
+                .build();
+    }
+
+    /** Resume 구성요소 연결: 기존 요소 초기화 후 add* 사용 (orphanRemoval 작동) */
+    public Resume attachResumeParts(
+            Resume resume,
+            Introduction intro,                    // null 허용(미설정)
+            Education education,                   // null 허용
+            List<Activity> activities,             // null 가능
+            List<Project> projects                 // null 가능
+    ) {
+        if (resume == null) resume = Resume.builder().build();
+
+        // 단방향 1:1
+        resume.setIntroduction(intro);
+        resume.setEducation(education);
+
+        // 1:N: orphanRemoval을 위해 교체 패턴 사용
+        if (resume.getActivities() != null) resume.getActivities().clear();
+        if (!CollectionUtils.isEmpty(activities)) {
+            for (Activity a : activities) resume.addActivity(a);
+        }
+
+        if (resume.getProjects() != null) resume.getProjects().clear();
+        if (!CollectionUtils.isEmpty(projects)) {
+            for (Project p : projects) resume.addProject(p);
+        }
+
+        return resume;
+    }
+
+    /** Project에 성과/기술스택 연결 (양방향 없는 ManyToMany/ElementCollection) */
+    public void attachProjectExtras(Project project, List<String> achievements, List<String> techSkillNames) {
+        if (project == null) return;
+
+        if (project.getAchievements() != null) project.getAchievements().clear();
+        if (!CollectionUtils.isEmpty(achievements)) {
+            achievements.forEach(project::addAchievement);
+        }
+
+        if (project.getTechStack() != null) project.getTechStack().clear();
+        if (!CollectionUtils.isEmpty(techSkillNames)) {
+            Set<Skill> stack = techSkillNames.stream()
+                    .map(name -> skillRepository.findByName(name)
+                            .orElseGet(() -> skillRepository.save(Skill.builder().name(name).build())))
+                    .collect(Collectors.toSet());
+            project.getTechStack().addAll(stack);
+        }
+    }
+
+    /* ====================================================================== */
+    /* Profile Enrichers                                                      */
+    /* ====================================================================== */
+
     private void enrichWithSkills(ProfileRequest req, Profile profile) {
-        if (CollectionUtils.isEmpty(req.skills())) return;
+        profile.getProfileSkills().clear();
+        if (req == null || CollectionUtils.isEmpty(req.skills())) return;
 
-        Set<Skill> skills = req.skills().stream()
-                .map(name -> skillRepository.findByName(name).orElseGet(() -> skillRepository.save(new Skill(null, name))))
-                .collect(Collectors.toSet());
-        profile.getSkills().addAll(skills);
+        for (var skillReq : req.skills()) {
+            Skill skill = skillRepository.findByName(skillReq.name())
+                    .orElseGet(() -> skillRepository.save(Skill.builder().name(skillReq.name()).build()));
+
+            ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
+            profile.addSkill(ps);
+        }
     }
 
-    /** 자격증 추가 */
     private void enrichWithCertificates(ProfileRequest req, Profile profile) {
         profile.getProfileCertificates().clear();
-        if (CollectionUtils.isEmpty(req.certificates())) return;
+        if (req == null || CollectionUtils.isEmpty(req.certificates())) return;
 
-        Set<ProfileCertificate> pcs = req.certificates().stream()
-                .map(c -> profileCertificateOf(profile, c.name(), c.year()))
-                .collect(Collectors.toSet());
-        profile.getProfileCertificates().addAll(pcs);
+        for (var certReq : req.certificates()) {
+            ProfileCertificate pc = profileCertificateOf(profile, certReq.name(), certReq.year());
+            profile.addCertificate(pc);
+        }
     }
 
     private ProfileCertificate profileCertificateOf(Profile profile, String certName, String year) {
         Certificate cert = certificateRepository.findByJmfldnm(certName)
                 .orElseThrow(() -> new IllegalArgumentException("자격증을 찾을 수 없습니다: " + certName));
-        return new ProfileCertificate(profile, cert, year);
+        return ProfileCertificate.of(profile, cert, year);
     }
 
-    /** 희망 직무 추가 */
     private void enrichWithDesiredJobs(ProfileRequest req, Profile profile) {
-        if (CollectionUtils.isEmpty(req.desiredJobCodes())) return;
+        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()
                 .map(code -> saraminJobRepository.findById(code)
@@ -170,26 +286,19 @@ public class MemberService {
         profile.getDesiredJobs().addAll(jobs);
     }
 
-    // ────────────────────────────────────────────────────────────────────────────────
-    // 역량(NCS) 추천 로직
-    // ────────────────────────────────────────────────────────────────────────────────
+    /* ====================================================================== */
+    /* NCS 추천                                                               */
+    /* ====================================================================== */
 
     private void recommendCapabilities(Profile profile) {
         recommendUserCapabilities(profile);
         recommendDesiredCapabilities(profile);
     }
 
-    /** 사용자 보유 역량 추천 */
     private void recommendUserCapabilities(Profile profile) {
-        if (profile.getSkills().isEmpty() || profile.getProfileCertificates().isEmpty()) return;
+        if (profile.getProfileSkills().isEmpty() && profile.getProfileCertificates().isEmpty()) return;
 
-        Set<String> skills = profile.getSkills().stream().map(Skill::getName).collect(Collectors.toSet());
-        Set<String> certs = profile.getProfileCertificates().stream()
-                .map(pc -> pc.getCertificate().getJmfldnm())
-                .collect(Collectors.toSet());
-
-        // ⚠️ 트랜잭션 안에서 block() 호출은 지양. 이벤트/비동기 처리 권장.
-        Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(skills, certs, profile.getResume())
+        Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(profile)
                 .blockOptional().orElseGet(HashSet::new);
 
         if (!rec.isEmpty()) {
@@ -199,11 +308,13 @@ public class MemberService {
         }
     }
 
-    /** 희망 직무 기반 역량 추천 */
     private void recommendDesiredCapabilities(Profile profile) {
         if (profile.getDesiredJobs().isEmpty()) return;
 
-        Set<String> names = profile.getDesiredJobs().stream().map(SaraminJob::getName).collect(Collectors.toSet());
+        Set<String> names = profile.getDesiredJobs().stream()
+                .map(SaraminJob::getName)
+                .collect(Collectors.toSet());
+
         Set<String> rec = openAiService.recommendDesiredJobCodeUsingAssistant(String.join(", ", names))
                 .blockOptional().orElseGet(HashSet::new);
 
@@ -214,9 +325,9 @@ public class MemberService {
         }
     }
 
-    // ────────────────────────────────────────────────────────────────────────────────
-    // 공통 유틸
-    // ────────────────────────────────────────────────────────────────────────────────
+    /* ====================================================================== */
+    /* Utils                                                                  */
+    /* ====================================================================== */
 
     private Member findMember(Long id) {
         return memberRepository.findById(id)

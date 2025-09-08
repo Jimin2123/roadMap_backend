@@ -29,14 +29,19 @@ public record MemberResponse(
         AddressResponse address
 ) {
         public static MemberResponse from(Member member) {
+                if (member == null) return null;
+
+                // account는 optional=false지만, 방어적으로 null-safe
+                final String email = (member.getAccount() != null) ? member.getAccount().getEmail() : null;
+
                 return new MemberResponse(
                         member.getId(),
-                        member.getAccount().getEmail(),
+                        email,
                         member.getName(),
                         member.getBirthDate(),
                         member.getPhoneNumber(),
-                        ProfileResponse.from(member.getProfile()),
-                        AddressResponse.from(member.getAddress())
+                        ProfileResponse.from(member.getProfile()),   // 내부에서 null 처리 가정
+                        AddressResponse.from(member.getAddress())    // 내부에서 null 처리 가정
                 );
         }
 }

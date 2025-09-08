@@ -1,6 +1,8 @@
 package com.shingu.roadmap.security.config;
 
 import com.shingu.roadmap.common.filter.JwtAuthenticationFilter;
+import com.shingu.roadmap.security.handler.JwtAccessDeniedHandler;
+import com.shingu.roadmap.security.handler.JwtAuthenticationEntryPoint;
 import com.shingu.roadmap.security.jwt.JwtUtil;
 import com.shingu.roadmap.security.service.CustomUserDetailsService;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
@@ -16,6 +18,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -41,12 +44,21 @@ public class SecurityConfig {
 
   private final JwtUtil jwtUtil;
   private final CustomUserDetailsService customUserDetailsService;
+  private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+  private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
 
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     return http
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(Customizer.withDefaults())  // 🔥 CORS 활성화
+            .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                    .accessDeniedHandler(jwtAccessDeniedHandler)
+            )
+            .sessionManagement(session -> session
+                    .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .cors(Customizer.withDefaults()) // CORS 설정
             .authorizeHttpRequests(req -> req
                     .requestMatchers(
                             "/api/v1/member", // 회원 가입

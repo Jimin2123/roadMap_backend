@@ -2,61 +2,131 @@ package com.shingu.roadmap.member.domain;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
-import com.shingu.roadmap.common.domain.Certificate;
-import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.resume.domain.Resume;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 
 @Entity
+@Table(name = "profile")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@EqualsAndHashCode(of = "id")
+@Builder(toBuilder = true)
+@NamedEntityGraph( // DTO 변환 시 필요한 연관을 한 번에 로딩할 때 사용
+        name = "Profile.graph.forResponse",
+        attributeNodes = {
+                @NamedAttributeNode("desiredJobs"),
+                @NamedAttributeNode("profileCertificates"),
+                @NamedAttributeNode("profileSkills"),
+                @NamedAttributeNode("desiredCapabilities"),
+                @NamedAttributeNode("userCapabilities"),
+                @NamedAttributeNode("resume")
+        }
+)
 public class Profile {
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
   @Column(length = 100)
-  private String educationLevel; // 학력 수준 (예: 고등학교, 대학교 등)
+  private String educationLevel;
 
-  @ManyToMany
+  @Column(length = 64)
+  private String recommendedJobInfoCategoryCode;
+
+  @Column(length = 128)
+  private String recommendedJobInfoAbilityCode;
+
+  @Column(length = 64)
+  private String recommendedEncyclopediaThemeCode;
+
+  @ManyToMany(fetch = FetchType.LAZY)
   @JoinTable(name = "profile_desired_job",
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "job_code"))
+  @Builder.Default
   private Set<SaraminJob> desiredJobs = new HashSet<>();
 
-  @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+  @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
+          cascade = CascadeType.ALL, orphanRemoval = true)
+  @Builder.Default
   private Set<ProfileCertificate> profileCertificates = new HashSet<>();
 
-  @ManyToMany
-  @JoinTable(
-          name = "profile_skill",
-          joinColumns = @JoinColumn(name = "profile_id"),
-          inverseJoinColumns = @JoinColumn(name = "skill_id")
-  )
-  private Set<Skill> skills = new HashSet<>(); // 보유 기술
+  @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
+          cascade = CascadeType.ALL, orphanRemoval = true)
+  @Builder.Default
+  private Set<ProfileSkill> profileSkills = new HashSet<>();
 
-  @ManyToMany
-  @JoinTable(
-          name = "profile_desired_ncs",
+  @ManyToMany(fetch = FetchType.LAZY)
+  @JoinTable(name = "profile_desired_ncs",
           joinColumns = @JoinColumn(name = "profile_id"),
-          inverseJoinColumns = @JoinColumn(name = "ncs_code")
-  )
-  private Set<NcsOccupation> desiredCapabilities = new HashSet<>(); // 희망 직업 NCS 코드
+          inverseJoinColumns = @JoinColumn(name = "ncs_code"))
+  @Builder.Default
+  private Set<NcsOccupation> desiredCapabilities = new HashSet<>();
 
-  @ManyToMany
-  @JoinTable(
-          name = "profile_user_ncs",
+  @ManyToMany(fetch = FetchType.LAZY)
+  @JoinTable(name = "profile_user_ncs",
           joinColumns = @JoinColumn(name = "profile_id"),
-          inverseJoinColumns = @JoinColumn(name = "ncs_code")
-  )
-  private Set<NcsOccupation> userCapabilities = new HashSet<>(); // 보유 NCS 코드
+          inverseJoinColumns = @JoinColumn(name = "ncs_code"))
+  @Builder.Default
+  private Set<NcsOccupation> userCapabilities = new HashSet<>();
 
-  @OneToOne(cascade = CascadeType.ALL)
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "resume_id")
   private Resume resume;
+
+  /* ===== 비즈니스 메서드 ===== */
+  public void updateEducationLevel(String v) { this.educationLevel = normalize(v); }
+  public void updateRecommendedJobInfoCategoryCode(String v) { this.recommendedJobInfoCategoryCode = normalize(v); }
+  public void updateRecommendedJobInfoAbilityCode(String v) { this.recommendedJobInfoAbilityCode = normalize(v); }
+  public void updateRecommendedEncyclopediaThemeCode(String v) { this.recommendedEncyclopediaThemeCode = normalize(v); }
+
+  public void setResume(Resume r) { this.resume = r; }
+  public void clearResume() { this.resume = null; }
+
+  public void addDesiredJob(SaraminJob job) { if (job != null) this.desiredJobs.add(job); }
+  public void removeDesiredJob(SaraminJob job) { if (job != null) this.desiredJobs.remove(job); }
+
+  public void addDesiredCapability(NcsOccupation ncs) { if (ncs != null) this.desiredCapabilities.add(ncs); }
+  public void removeDesiredCapability(NcsOccupation ncs) { if (ncs != null) this.desiredCapabilities.remove(ncs); }
+
+  public void addUserCapability(NcsOccupation ncs) { if (ncs != null) this.userCapabilities.add(ncs); }
+  public void removeUserCapability(NcsOccupation ncs) { if (ncs != null) this.userCapabilities.remove(ncs); }
+
+  /* --- 양방향 일관성: 자식이 주인(mappedBy="profile")이므로 setProfile(this) 필요 --- */
+  public void addCertificate(ProfileCertificate pc) {
+    if (pc == null) return;
+    if (this.profileCertificates.add(pc)) {
+      if (!Objects.equals(pc.getProfile(), this)) pc.setProfile(this);
+    }
+  }
+
+  public void removeCertificate(ProfileCertificate pc) {
+    if (pc == null) return;
+    if (this.profileCertificates.remove(pc)) {
+      if (Objects.equals(pc.getProfile(), this)) pc.setProfile(null);
+    }
+  }
+
+  public void addSkill(ProfileSkill ps) {
+    if (ps == null) return;
+    if (this.profileSkills.add(ps)) {
+      if (!Objects.equals(ps.getProfile(), this)) ps.setProfile(this);
+    }
+  }
+
+  public void removeSkill(ProfileSkill ps) {
+    if (ps == null) return;
+    if (this.profileSkills.remove(ps)) {
+      if (Objects.equals(ps.getProfile(), this)) ps.setProfile(null);
+    }
+  }
+
+  private static String normalize(String v) { return (v == null || v.isBlank()) ? null : v.trim(); }
 }

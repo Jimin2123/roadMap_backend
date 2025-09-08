@@ -10,8 +10,8 @@ public record EducationRequest(
         @Schema(description = "전공", example = "컴퓨터공학")
         String major,
 
-        @Schema(description = "재학 기간", example = "2015-03 ~ 2019-02")
-        String period,
+        @Schema(description = "재학 기간", example = "{\"startDate\":\"2019-03-01\",\"endDate\":\"2023-02-28\"}")
+        PeriodRequest period,
 
         @Schema(description = "학력 상태", example = "졸업")
         String status

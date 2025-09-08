@@ -19,12 +19,12 @@ public record AddressResponse(
         @Schema(description = "시/군/구", example = "서울특별시 강남구")
         String regionCity,
 
-        @Schema
+        @Schema(description = "우편번호", example = "06236")
         String zonecode
 ) {
-  public static AddressResponse from(Address address) {
-    if (address == null) return null;
 
+  public static AddressResponse from(Address address) {
+    if (address == null) return null; // 컨트롤러/서비스 정책에 맞게 Optional로 바꾸는 것도 가능
     return new AddressResponse(
             address.getAddress(),
             address.getAddressJibun(),
@@ -32,5 +32,10 @@ public record AddressResponse(
             address.getRegionCity(),
             address.getZonecode()
     );
+  }
+
+  // null-safe 변환 헬퍼
+  public static Optional<AddressResponse> ofNullable(Address address) {
+    return Optional.ofNullable(address).map(AddressResponse::from);
   }
 }

@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeoutException; // 👈 import 추가
 
 @Component
 @RequiredArgsConstructor
@@ -78,25 +79,31 @@ public class OpenAiClient {
                       .bodyToMono(JsonNode.class)
                       .map(json -> Map.entry(threadId, json.get("id").asText()));
             })
-            .flatMap(entry -> waitForCompletion(entry.getKey(), entry.getValue()));
+            .flatMap(entry -> waitForCompletion(entry.getKey(), entry.getValue()))
+            // 👇 타임아웃 로직 추가
+            .timeout(Duration.ofSeconds(60))
+            .onErrorMap(TimeoutException.class, e -> new IllegalStateException("Assistant run이 60초를 초과했습니다."));
   }
 
   private Mono<String> waitForCompletion(String threadId, String runId) {
     return Mono.defer(() ->
-            openAiWebClient.get()
-                    .uri("/threads/" + threadId + "/runs/" + runId)
-                    .retrieve()
-                    .bodyToMono(JsonNode.class)
-    ).flatMap(json -> {
-      String status = json.get("status").asText();
-      if ("completed".equals(status)) {
-        return getMessagesFromThread(threadId);
-      } else if ("failed".equals(status)) {
-        return Mono.error(new IllegalStateException("Assistant run failed"));
-      } else {
-        return Mono.delay(Duration.ofSeconds(1)).then(waitForCompletion(threadId, runId));
-      }
-    });
+                    openAiWebClient.get()
+                            .uri("/threads/" + threadId + "/runs/" + runId)
+                            .retrieve()
+                            .bodyToMono(JsonNode.class)
+            )
+            .flatMap(json -> {
+              String status = json.get("status").asText();
+              if ("completed".equals(status)) {
+                return getMessagesFromThread(threadId);
+              } else if ("failed".equals(status) || "cancelled".equals(status) || "expired".equals(status)) {
+                log.error("Assistant run 실패. Status: {}", status);
+                return Mono.error(new IllegalStateException("Assistant run 실패. Status: " + status));
+              } else {
+                // In-progress 상태이면 1초 후 다시 시도
+                return Mono.delay(Duration.ofSeconds(1)).then(waitForCompletion(threadId, runId));
+              }
+            });
   }
 
   private Mono<String> getMessagesFromThread(String threadId) {
@@ -114,5 +121,4 @@ public class OpenAiClient {
               return "[No assistant response]";
             });
   }
-
 }

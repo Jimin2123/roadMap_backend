@@ -1,29 +1,47 @@
 package com.shingu.roadmap.resume.dto.response;
 
 import com.shingu.roadmap.resume.domain.Activity;
-import com.shingu.roadmap.resume.domain.Portfolio;
 import com.shingu.roadmap.resume.domain.Project;
 import com.shingu.roadmap.resume.domain.Resume;
 
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
 
 public record ResumeResponse(
         String introduction,
         EducationResponse education,
-        Set<ActivityResponse> activities,
-        Set<PortfolioResponse> portfolios,
-        Set<ProjectResponse> projects
+        List<ActivityResponse> activities,
+        List<ProjectResponse> projects
 ) {
   public static ResumeResponse from(Resume resume) {
     if (resume == null) return null;
 
+    Comparator<Activity> activityOrder = Comparator
+            .comparing((Activity a) -> a.getPeriod() != null ? a.getPeriod().getStartDate() : LocalDate.MIN)
+            .reversed()
+            .thenComparing(Activity::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+
+    Comparator<Project> projectOrder = Comparator
+            .comparing((Project p) -> p.getPeriod() != null ? p.getPeriod().getStartDate() : LocalDate.MIN)
+            .reversed()
+            .thenComparing(Project::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+
+    List<ActivityResponse> activityDtos = resume.getActivities().stream()
+            .sorted(activityOrder)
+            .map(ActivityResponse::from)
+            .toList();
+
+    List<ProjectResponse> projectDtos = resume.getProjects().stream()
+            .sorted(projectOrder)
+            .map(ProjectResponse::from)
+            .toList();
+
     return new ResumeResponse(
             resume.getIntroduction() != null ? resume.getIntroduction().getContent() : null,
-            resume.getEducation() != null ? EducationResponse.from(resume.getEducation()) : null,
-            resume.getActivities().stream().map(ActivityResponse::from).collect(Collectors.toSet()),
-            resume.getPortfolios().stream().map(PortfolioResponse::from).collect(Collectors.toSet()),
-            resume.getProjects().stream().map(ProjectResponse::from).collect(Collectors.toSet())
+            EducationResponse.from(resume.getEducation()),
+            activityDtos,
+            projectDtos
     );
   }
 }
