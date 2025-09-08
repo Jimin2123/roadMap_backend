@@ -25,7 +25,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
@@ -62,13 +64,25 @@ public class MemberService {
     public MemberResponse updateProfile(Long memberId, ProfileRequest req, Resume resume) {
         Member member = findMember(memberId);
 
-        // 기존 프로필을 완전히 교체하는 정책이면 orphanRemoval로 정리되도록 교체
+        // 기존 프로필 조립
         Profile profile = assembleProfile(req, resume);
 
+        // 스킬/자격/희망직무/NCS 역량 보강
         enrichWithSkills(req, profile);
         enrichWithCertificates(req, profile);
         enrichWithDesiredJobs(req, profile);
         recommendCapabilities(profile);
+
+        // AI
+        openAiService.recommendSearchCodes(profile)
+                .timeout(Duration.ofSeconds(8))
+                .onErrorResume(e -> Mono.empty())
+                .blockOptional()
+                .ifPresent(codes -> {
+                    profile.updateRecommendedJobInfoCategoryCode(codes.get("jobInfoCategoryCode"));
+                    profile.updateRecommendedJobInfoAbilityCode(codes.get("jobInfoAbilityCode")); // ← abilities에서 선택
+                    profile.updateRecommendedEncyclopediaThemeCode(codes.get("encyclopediaThemeCode"));
+                });
 
         member.setProfile(profile);
         return MemberResponse.from(member);

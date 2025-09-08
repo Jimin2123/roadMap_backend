@@ -124,24 +124,29 @@ public class OpenAiService {
         당신은 사용자의 프로필을 분석하여 커리어넷 API 검색에 가장 적합한 분류 코드를 추천하는 전문가입니다.
         사용자 정보와 선택 가능한 코드 목록을 기반으로, 각 분류에서 가장 관련성이 높은 코드 **하나만** 골라주세요.
         결과는 반드시 다음 JSON 형식으로만 반환해야 합니다. 설명은 절대 추가하지 마세요.
+        "```json" 과 같은 마크다운 기호는 절대 포함하지 마세요.
         
         {
           "jobInfoCategoryCode": "...",
+          "jobInfoAbilityCode": "...",
           "encyclopediaThemeCode": "..."
         }
-    """;
+        """;
 
-    // 사용자 프롬프트에 Provider로부터 가져온 JSON 내용을 삽입
     String userPrompt = """
-            [사용자 정보]
-            %s
-            
-            [선택 가능한 '직업 정보' 코드 목록]
-            %s
-            
-            [선택 가능한 '직업 백과' 코드 목록]
-            %s
-        """.formatted(userContext, jobInfoCodesJson, encyclopediaCodesJson);
+          [사용자 정보]
+          %s
+          
+          [선택 가능한 '직업 정보' 코드 목록(jobCategories)]
+          %s
+          
+          [선택 가능한 '직업 능력' 코드 목록(abilities)]
+          %s
+          
+          [선택 가능한 '직업 백과' 테마 목록(themes)]
+          %s
+          """.formatted(userContext, jobInfoCodesJson, jobInfoCodesJson, encyclopediaCodesJson);
+
 
     List<Map<String, String>> messages = List.of(
             Map.of("role", "system", "content", systemPrompt),
@@ -150,14 +155,24 @@ public class OpenAiService {
 
     // 4. OpenAI API를 호출하고 결과를 Map으로 파싱하여 반환합니다.
     return openAiClient.generateChatCompletion(messages)
-            .flatMap(response -> {
+            .flatMap(resp -> {
               try {
-                // objectMapper가 파싱한 결과를 Mono.just()로 감싸서 성공 스트림으로 전달
-                return Mono.just(objectMapper.readValue(response, new TypeReference<Map<String, String>>() {}));
+
+                String raw = resp.trim();
+
+                // GPT가 ```json ... ``` 으로 감쌌을 경우 제거
+                if (raw.startsWith("```")) {
+                  raw = raw.replaceAll("```json", "")
+                          .replaceAll("```", "")
+                          .trim();
+                }
+
+                Map<String, String> codes = objectMapper.readValue(resp, new TypeReference<Map<String,String>>(){});
+                // optional: 방어적 널 처리
+                return Mono.just(codes);
               } catch (JsonProcessingException e) {
-                // 파싱 실패 시, 로그를 남기고 Mono.error()를 통해 에러 스트림으로 전달
-                log.error("GPT 응답 JSON 파싱에 실패했습니다. 응답 내용: {}", response, e);
-                return Mono.error(new IllegalStateException("GPT로부터 받은 응답을 파싱할 수 없습니다.", e));
+                log.error("GPT 응답 JSON 파싱 실패: {}", resp, e);
+                return Mono.error(new IllegalStateException("GPT 응답 파싱 실패", e));
               }
             });
   }
