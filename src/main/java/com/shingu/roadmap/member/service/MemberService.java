@@ -126,6 +126,9 @@ public class MemberService {
         return new Profile(
                 null,
                 req.educationLevel().name(),
+                null,
+                null,
+                null,
                 new HashSet<>(), // desiredJobs
                 new HashSet<>(), // certificates
                 new HashSet<>(), // profileSkills

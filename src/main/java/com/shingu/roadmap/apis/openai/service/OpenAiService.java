@@ -3,6 +3,8 @@ package com.shingu.roadmap.apis.openai.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shingu.roadmap.apis.careernet.service.CareerNetCodeProvider;
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserPromptRequest;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
@@ -29,6 +31,7 @@ public class OpenAiService {
 
   private final OpenAiClient openAiClient;
   private final ObjectMapper objectMapper;
+  private final CareerNetCodeProvider careerNetCodeProvider;
 
   /**
    * 사용자 정보를 바탕으로 훈련과정을 추천합니다.
@@ -88,6 +91,76 @@ public class OpenAiService {
             });
   }
 
+  /**
+   * Profile 객체를 받아 사용자의 상세 정보를 바탕으로
+   * 커리어넷 API 검색에 적합한 '직업 정보' 및 '직업 백과' 분류 코드를 추천합니다.
+   * (이 메서드는 Profile 객체를 직접 사용하므로, Profile 구조 변경에 맞춰 수정되었습니다.)
+   */
+  public Mono<Map<String, String>> recommendSearchCodes(Profile profile) {
+    // 1. jobInfomationSearchCode.json, jobEncyclopediaSearchCode.json 파일 내용을 읽어옵니다.
+    // (실제 구현에서는 ResourceLoader를 사용해 클래스패스에서 파일을 읽어옵니다.)
+    String jobInfoCodesJson = careerNetCodeProvider.getJobInfoCodesJson();
+    String encyclopediaCodesJson = careerNetCodeProvider.getEncyclopediaCodesJson();
+
+    // 2. Profile 정보를 바탕으로 AI에게 전달할 상세한 사용자 정보를 만듭니다.
+    // 기존의 resumeToText, 스킬, 자격증, NCS 코드 등을 모두 활용합니다.
+    String userContext = """
+        - 보유 기술: %s
+        - 보유 자격증: %s
+        - 보유 NCS 역량 : %s
+        - 희망 직무 NCS 역량 : %s
+        - 이력서 내용:
+        %s
+    """.formatted(
+            profile.getProfileSkills().stream().map(ps -> ps.getSkill().getName()).collect(Collectors.joining(", ")),
+            profile.getProfileCertificates().stream().map(pc -> pc.getCertificate().getJmfldnm()).collect(Collectors.joining(", ")),
+            profile.getUserCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
+            profile.getDesiredCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
+            resumeToText(profile.getResume())
+    );
+
+    // 3. AI에게 전달할 프롬프트를 구성합니다.
+    String systemPrompt = """
+        당신은 사용자의 프로필을 분석하여 커리어넷 API 검색에 가장 적합한 분류 코드를 추천하는 전문가입니다.
+        사용자 정보와 선택 가능한 코드 목록을 기반으로, 각 분류에서 가장 관련성이 높은 코드 **하나만** 골라주세요.
+        결과는 반드시 다음 JSON 형식으로만 반환해야 합니다. 설명은 절대 추가하지 마세요.
+        
+        {
+          "jobInfoCategoryCode": "...",
+          "encyclopediaThemeCode": "..."
+        }
+    """;
+
+    // 사용자 프롬프트에 Provider로부터 가져온 JSON 내용을 삽입
+    String userPrompt = """
+            [사용자 정보]
+            %s
+            
+            [선택 가능한 '직업 정보' 코드 목록]
+            %s
+            
+            [선택 가능한 '직업 백과' 코드 목록]
+            %s
+        """.formatted(userContext, jobInfoCodesJson, encyclopediaCodesJson);
+
+    List<Map<String, String>> messages = List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+    );
+
+    // 4. OpenAI API를 호출하고 결과를 Map으로 파싱하여 반환합니다.
+    return openAiClient.generateChatCompletion(messages)
+            .flatMap(response -> {
+              try {
+                // objectMapper가 파싱한 결과를 Mono.just()로 감싸서 성공 스트림으로 전달
+                return Mono.just(objectMapper.readValue(response, new TypeReference<Map<String, String>>() {}));
+              } catch (JsonProcessingException e) {
+                // 파싱 실패 시, 로그를 남기고 Mono.error()를 통해 에러 스트림으로 전달
+                log.error("GPT 응답 JSON 파싱에 실패했습니다. 응답 내용: {}", response, e);
+                return Mono.error(new IllegalStateException("GPT로부터 받은 응답을 파싱할 수 없습니다.", e));
+              }
+            });
+  }
 
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
     String userPrompt = String.format(

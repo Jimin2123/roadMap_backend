@@ -14,6 +14,7 @@ import java.util.Set;
 
 @Entity
 @Getter
+@Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 public class Profile {
@@ -23,6 +24,11 @@ public class Profile {
 
   @Column(length = 100)
   private String educationLevel; // 학력 수준 (예: 고등학교, 대학교 등)
+
+  // 추천된 검색 코드를 저장할 필드
+  private String recommendedJobInfoCategoryCode; // 직업정보 - 직업 분야
+  private String recommendedJobInfoAbilityCode;  // 직업정보 - 핵심 역량 (여러 개일 수 있으므로 JSON이나 별도 테이블 고려)
+  private String recommendedEncyclopediaThemeCode; // 직업백과 - 테마
 
   @ManyToMany
   @JoinTable(name = "profile_desired_job",
@@ -55,9 +61,4 @@ public class Profile {
   @OneToOne(cascade = CascadeType.ALL)
   @JoinColumn(name = "resume_id")
   private Resume resume;
-
-  public void addSkill(Skill skill, SkillProficiency proficiency) {
-    ProfileSkill profileSkill = new ProfileSkill(this, skill, proficiency);
-    this.profileSkills.add(profileSkill);
-  }
 }
