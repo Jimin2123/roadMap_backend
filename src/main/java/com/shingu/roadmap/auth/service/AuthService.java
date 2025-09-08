@@ -10,7 +10,6 @@ import com.shingu.roadmap.security.jwt.JwtUtil;
 import com.shingu.roadmap.security.jwt.TokenPayload;
 import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.jsonwebtoken.Claims;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,14 +17,19 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+  private static final int REFRESH_LIFETIME_DAYS = 14;
+  private static final long REFRESH_ROTATE_THRESHOLD_MINUTES = 60L; // 남은 유효기간이 60분 미만이면 회전
 
   private final AuthenticationManager authenticationManager;
   private final JwtUtil jwtUtil;
@@ -33,21 +37,28 @@ public class AuthService {
   private final UserDetailsService userDetailsService;
   private final RefreshTokenRepository refreshTokenRepository;
 
+  /**
+   * 로그인 처리
+   * - Spring Security 인증
+   * - JWT 발급
+   * - Account.lastLogin 도메인 메서드로 갱신
+   * - RefreshToken은 Member 연관 없이 별도 테이블에 신규 저장
+   */
   @Transactional
-  public LoginResponse login(LoginRequest loginRequest) {
-
-    // Spring Security 인증 처리
+  public LoginResponse login(LoginRequest request) {
+    // 1) 인증
     Authentication authentication = authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(
-                    loginRequest.email(), loginRequest.password()
-            )
+            new UsernamePasswordAuthenticationToken(request.email(), request.password())
     );
 
-    // 인증된 사용자 정보 조회
-    Member member = memberRepository.findByAccountEmail(loginRequest.email())
+    // 2) 회원 로드
+    Member member = memberRepository.findByAccountEmail(request.email())
             .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
-    // JWT 페이로드 구성
+    // 3) 마지막 로그인 도메인 갱신
+    member.getAccount().markLoggedIn(LocalDateTime.now());
+
+    // 4) JWT 페이로드 구성
     TokenPayload payload = new TokenPayload(
             member.getId(),
             member.getAccount().getEmail(),
@@ -55,41 +66,39 @@ public class AuthService {
             member.getRole()
     );
 
-    // Access & Refresh Token 생성
+    // 5) 토큰 발급
     String accessToken = jwtUtil.generateAccessToken(payload);
     String refreshToken = jwtUtil.generateRefreshToken(payload);
 
-    // 기존 RefreshToken이 있다면 업데이트 / 없으면 새로 생성
-    RefreshToken existingToken = member.getRefreshToken();
-
-    if (existingToken != null) {
-      existingToken.setToken(refreshToken);
-      existingToken.setExpiresAt(Instant.now().plus(14, ChronoUnit.DAYS));
-    } else {
-      RefreshToken newToken = new RefreshToken(
-              null,
-              refreshToken,
-              Instant.now().plus(14, ChronoUnit.DAYS)
-      );
-      member.setRefreshToken(newToken);
-    }
-
-    // Member 저장 (Cascade로 RefreshToken 자동 저장)
-    memberRepository.save(member);
+    // 6) RefreshToken 저장 (연관 없음 → 단독 저장)
+    RefreshToken tokenEntity = RefreshToken.builder()
+            .token(refreshToken)
+            .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
+            .build();
+    refreshTokenRepository.save(tokenEntity);
 
     return new LoginResponse(accessToken, refreshToken);
   }
 
+  /**
+   * Refresh 토큰으로 액세스 토큰 재발급
+   * - DB에 저장된 토큰인지 확인
+   * - 만료/서명/유형 검증
+   * - Access Token 재발급
+   * - 남은 만료시간이 임계 미만이면 Refresh 토큰 회전(rotate + renewTo)
+   */
+  @Transactional
   public LoginResponse refreshToken(String refreshToken) {
-
-    RefreshToken refreshTokenEntity = refreshTokenRepository.findByToken(refreshToken)
+    // 1) 존재/만료 확인
+    RefreshToken tokenEntity = refreshTokenRepository.findByToken(refreshToken)
             .orElseThrow(() -> new RuntimeException("유효하지 않은 Refresh Token"));
 
-    if (refreshTokenEntity.getExpiresAt().isBefore(Instant.now())) {
-      refreshTokenRepository.delete(refreshTokenEntity);
+    if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
+      refreshTokenRepository.delete(tokenEntity);
       throw new RuntimeException("Refresh Token 만료됨");
     }
 
+    // 2) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
       throw new RuntimeException("Refresh Token 무결성 검증 실패");
     }
@@ -97,36 +106,41 @@ public class AuthService {
     Claims claims = jwtUtil.parseClaims("refresh", refreshToken);
     String email = claims.get("email", String.class);
 
+    // 3) 사용자 로드
     UserDetails userDetails = userDetailsService.loadUserByUsername(email);
     Member member = ((CustomUserDetails) userDetails).getMember();
 
     TokenPayload payload = new TokenPayload(
-            member.getId(), email, member.getName(), member.getRole()
+            member.getId(),
+            email,
+            member.getName(),
+            member.getRole()
     );
 
+    // 4) Access 토큰 재발급
     String newAccessToken = jwtUtil.generateAccessToken(payload);
 
-    long remaining = Duration.between(Instant.now(), refreshTokenEntity.getExpiresAt()).toMinutes();
-    if (remaining < 60) { // 예: 1시간 미만이면 새로 발급
-      String newRefreshToken = jwtUtil.generateRefreshToken(payload);
-      refreshTokenEntity.setToken(newRefreshToken);
-      refreshTokenEntity.setExpiresAt(Instant.now().plus(14, ChronoUnit.DAYS));
-      refreshTokenRepository.save(refreshTokenEntity);
-      return new LoginResponse(newAccessToken, newRefreshToken);
+    // 5) Refresh 회전 조건 검사 및 처리
+    long remainingMinutes = Duration.between(Instant.now(), tokenEntity.getExpiresAt()).toMinutes();
+    if (remainingMinutes < REFRESH_ROTATE_THRESHOLD_MINUTES) {
+      String rotated = jwtUtil.generateRefreshToken(payload);
+      tokenEntity.rotate(rotated);
+      tokenEntity.renewTo(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS));
+      refreshTokenRepository.save(tokenEntity);
+      return new LoginResponse(newAccessToken, rotated);
     }
 
     return new LoginResponse(newAccessToken, null);
   }
 
-  public void logout(Long memberId) {
-    Member member = memberRepository.findById(memberId)
-            .orElseThrow(() -> new RuntimeException("존재하지 않는 사용자입니다."));
-
-    RefreshToken refreshToken = member.getRefreshToken();
-    if (refreshToken != null) {
-      refreshTokenRepository.delete(refreshToken);
-      member.setRefreshToken(null);
-      memberRepository.save(member);
-    }
+  /**
+   * 로그아웃
+   * - 도메인 모델이 Member 연관을 가지지 않으므로, 클라이언트가 보유한 refreshToken 문자열로 삭제
+   * - 추가로 서버 측에서 블랙리스트(선택) 등을 운영하려면 별도 테이블/캐시 도입
+   */
+  @Transactional
+  public void logout(String refreshToken) {
+    refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenRepository::delete);
+    // 필요 시: 만료된 토큰 정리 배치/스케줄러도 운영 가능
   }
 }
