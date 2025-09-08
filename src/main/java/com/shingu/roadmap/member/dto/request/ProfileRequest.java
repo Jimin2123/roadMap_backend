@@ -20,8 +20,9 @@ public record ProfileRequest(
         @Schema(description = "학력", example = "ASSOCIATE_DEGREE", implementation = EducationLevelType.class)
         EducationLevelType educationLevel,
 
-        @Schema(description = "보유 기술", example = "[\"Java\", \"Spring\"]")
-        Set<String> skills,
+        // 👇 이 부분이 변경되었습니다.
+        @ArraySchema(schema = @Schema(description = "보유 기술 목록", implementation = SkillRequest.class))
+        Set<SkillRequest> skills,
 
         @ArraySchema(schema = @Schema(description = "자격증", implementation = CertificateDTO.class))
         Set<CertificateDTO> certificates,

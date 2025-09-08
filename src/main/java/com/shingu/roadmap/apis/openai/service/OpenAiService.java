@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
-import com.shingu.roadmap.apis.openai.dto.request.GptUserPromptRequest; // 👈 import 추가
+import com.shingu.roadmap.apis.openai.dto.request.GptUserPromptRequest;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.common.domain.Skill;
@@ -32,10 +32,10 @@ public class OpenAiService {
 
   /**
    * 사용자 정보를 바탕으로 훈련과정을 추천합니다.
-   * @param request 사용자 정보 및 훈련과정 리스트
-   * @return 추천된 NCS 코드 목록 (Set)
+   * (이 메서드는 GptUserProfileDto를 사용하며, 해당 DTO는 이미 수정되었으므로 이 메서드는 변경할 필요가 없습니다.)
    */
   public Mono<Set<String>> recommendTrainingCourse(TrainingRecommendationRequest request) {
+    // ... (기존 코드와 동일)
     if (request == null || request.userProfile() == null || request.trainingCourses() == null) {
       return Mono.error(new IllegalArgumentException("요청 정보가 올바르지 않습니다."));
     }
@@ -60,7 +60,6 @@ public class OpenAiService {
 
     String userPrompt;
     try {
-      // 👇 [개선] 새로 만든 DTO를 사용하여 JSON을 안전하게 생성
       GptUserPromptRequest promptRequest = new GptUserPromptRequest(
               GptUserProfileDto.from(request.userProfile()),
               request.address(),
@@ -89,23 +88,37 @@ public class OpenAiService {
             });
   }
 
+
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
     String userPrompt = String.format(
             "희망 직무: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
             desiredJob
     );
-    // 👇 [개선] 헬퍼 메서드 호출
     return getNcsCodesFromAssistant(userPrompt);
   }
 
-  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Set<String> skills, Set<String> certificates, Resume resume) {
+  /**
+   * 메서드 시그니처 및 내부 로직 변경
+   * 개별 정보 대신 Profile 객체를 직접 받아 숙련도를 포함한 프롬프트를 생성합니다.
+   */
+  public Mono<Set<String>> recommendNcsCodeUsingAssistant(Profile profile) {
+    // 기술 스택과 숙련도를 함께 문자열로 만듭니다. ex: "Java (ADVANCED), Spring (INTERMEDIATE)"
+    String skillsWithProficiency = profile.getProfileSkills().stream()
+            .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
+            .collect(Collectors.joining(", "));
+
+    // 자격증 정보를 문자열로 만듭니다.
+    String certificates = profile.getProfileCertificates().stream()
+            .map(pc -> pc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", "));
+
     String userPrompt = String.format(
-            "기술스택: [%s], 자격증: [%s] 이력서: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
-            String.join(", ", skills),
-            String.join(", ", certificates),
-            resumeToText(resume)
+            // 프롬프트에 숙련도를 참고하라는 내용을 추가하여 AI의 정확도를 높입니다.
+            "기술스택: [%s], 자격증: [%s], 이력서: [%s] 에 적합한 NCS 직무 코드를 추천해줘. 기술스택은 숙련도를 참고해서 더 정확하게 추천해줘. 결과는 코드만 콤마(,)로 나열해줘.",
+            skillsWithProficiency,
+            certificates,
+            resumeToText(profile.getResume())
     );
-    // 👇 [개선] 헬퍼 메서드 호출
     return getNcsCodesFromAssistant(userPrompt);
   }
 
@@ -146,6 +159,7 @@ public class OpenAiService {
             });
   }
 
+  // ... (resumeToText, formatPeriod 등 나머지 헬퍼 메서드는 기존과 동일)
   public List<String> extractValidNcsCodes(String raw) {
     List<String> result = new ArrayList<>();
     // 정확히 8자리 숫자만 추출 (NCS 분류코드가 8자리라고 가정)
@@ -217,12 +231,6 @@ public class OpenAiService {
     return sb.toString().trim();
   }
 
-  /**
-   * Period 객체를 "YYYY.MM" 또는 "YYYY.MM - YYYY.MM" 형식의 문자열로 변환합니다.
-   * 종료일이 없으면 "YYYY.MM - 진행 중"으로 표시합니다.
-   * @param period 변환할 Period 객체
-   * @return 포맷팅된 문자열
-   */
   private String formatPeriod(Period period) {
     if (period == null || period.getStartDate() == null) {
       return "";
@@ -238,11 +246,6 @@ public class OpenAiService {
     return startDate + " - " + endDate;
   }
 
-  /**
-   * 헬퍼 메서드: OpenAI 어시스턴트를 사용하여 NCS 코드를 추출합니다.
-   * @param userPrompt
-   * @return
-   */
   private Mono<Set<String>> getNcsCodesFromAssistant(String userPrompt) {
     return openAiClient.generateAssistantResponse(userPrompt)
             .map(this::extractValidNcsCodes)

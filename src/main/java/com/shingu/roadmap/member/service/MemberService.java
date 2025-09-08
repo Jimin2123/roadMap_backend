@@ -122,12 +122,13 @@ public class MemberService {
 
     /** Profile 엔티티 기본 뼈대 생성 */
     private Profile assembleProfile(ProfileRequest req, Resume resume) {
+        // Profile 생성자 변경에 따라 profileSkills 필드가 초기화됨 (기존 skills 필드 -> profileSkills 필드)
         return new Profile(
                 null,
                 req.educationLevel().name(),
                 new HashSet<>(), // desiredJobs
                 new HashSet<>(), // certificates
-                new HashSet<>(), // skills
+                new HashSet<>(), // profileSkills
                 new HashSet<>(), // desiredCapabilities
                 new HashSet<>(), // userCapabilities
                 resume
@@ -138,14 +139,26 @@ public class MemberService {
     // 프로필 확장(Enrich) 헬퍼
     // ────────────────────────────────────────────────────────────────────────────────
 
-    /** 기술 스킬 추가 */
+    /**
+     * 기술 스킬 추가
+     * SkillRequest(name, proficiency)를 받아 ProfileSkill 엔티티를 생성하고 Profile에 추가합니다.
+     */
     private void enrichWithSkills(ProfileRequest req, Profile profile) {
+        profile.getProfileSkills().clear(); // 기존 스킬 정보 초기화
         if (CollectionUtils.isEmpty(req.skills())) return;
 
-        Set<Skill> skills = req.skills().stream()
-                .map(name -> skillRepository.findByName(name).orElseGet(() -> skillRepository.save(new Skill(null, name))))
+        Set<ProfileSkill> profileSkills = req.skills().stream()
+                .map(skillRequest -> {
+                    // DB에 스킬이 없으면 새로 저장하고, 있으면 가져옵니다.
+                    Skill skill = skillRepository.findByName(skillRequest.name())
+                            .orElseGet(() -> skillRepository.save(new Skill(null, skillRequest.name())));
+
+                    // Profile, Skill, Proficiency 정보를 담은 ProfileSkill 엔티티를 생성합니다.
+                    return new ProfileSkill(profile, skill, skillRequest.proficiency());
+                })
                 .collect(Collectors.toSet());
-        profile.getSkills().addAll(skills);
+
+        profile.getProfileSkills().addAll(profileSkills);
     }
 
     /** 자격증 추가 */
@@ -185,17 +198,15 @@ public class MemberService {
         recommendDesiredCapabilities(profile);
     }
 
-    /** 사용자 보유 역량 추천 */
+    /**
+     * 사용자 보유 역량 추천
+     * profile.getSkills() 대신 profile.getProfileSkills()에서 기술 정보를 가져옵니다.
+     */
     private void recommendUserCapabilities(Profile profile) {
-        if (profile.getSkills().isEmpty() || profile.getProfileCertificates().isEmpty()) return;
+        // 조건문 변경: profile.getSkills() -> profile.getProfileSkills()
+        if (profile.getProfileSkills().isEmpty() && profile.getProfileCertificates().isEmpty()) return;
 
-        Set<String> skills = profile.getSkills().stream().map(Skill::getName).collect(Collectors.toSet());
-        Set<String> certs = profile.getProfileCertificates().stream()
-                .map(pc -> pc.getCertificate().getJmfldnm())
-                .collect(Collectors.toSet());
-
-        // ⚠️ 트랜잭션 안에서 block() 호출은 지양. 이벤트/비동기 처리 권장.
-        Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(skills, certs, profile.getResume())
+        Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(profile)
                 .blockOptional().orElseGet(HashSet::new);
 
         if (!rec.isEmpty()) {

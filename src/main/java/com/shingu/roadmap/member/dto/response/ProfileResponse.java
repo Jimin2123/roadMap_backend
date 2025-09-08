@@ -23,8 +23,9 @@ public record ProfileResponse(
         @Schema(description = "자격증 목록")
         Set<CertificateDTO> certificates,
 
+        // 👇 이 부분이 변경되었습니다.
         @Schema(description = "보유 기술 목록")
-        Set<Skill> skills,
+        Set<ProfileSkillDTO> skills,
 
         @Schema(description = "희망 직무 NCS 코드 목록")
         Set<NcsOccupation> desiredCapabilities,
@@ -42,7 +43,7 @@ public record ProfileResponse(
                         profile.getEducationLevel(),
                         profile.getDesiredJobs().stream().map(SaraminJobDto::from).collect(Collectors.toSet()),
                         profile.getProfileCertificates().stream().map(CertificateDTO::from).collect(Collectors.toSet()),
-                        profile.getSkills(),
+                        profile.getProfileSkills().stream().map(ProfileSkillDTO::from).collect(Collectors.toSet()),
                         profile.getDesiredCapabilities(),
                         profile.getUserCapabilities(),
                         ResumeResponse.from(profile.getResume())

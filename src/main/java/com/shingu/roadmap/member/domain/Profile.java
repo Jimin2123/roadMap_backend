@@ -4,6 +4,7 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.common.domain.Skill;
+import com.shingu.roadmap.common.enums.SkillProficiency;
 import com.shingu.roadmap.resume.domain.Resume;
 import jakarta.persistence.*;
 import lombok.*;
@@ -32,13 +33,8 @@ public class Profile {
   @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
   private Set<ProfileCertificate> profileCertificates = new HashSet<>();
 
-  @ManyToMany
-  @JoinTable(
-          name = "profile_skill",
-          joinColumns = @JoinColumn(name = "profile_id"),
-          inverseJoinColumns = @JoinColumn(name = "skill_id")
-  )
-  private Set<Skill> skills = new HashSet<>(); // 보유 기술
+  @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true)
+  private Set<ProfileSkill> profileSkills = new HashSet<>();
 
   @ManyToMany
   @JoinTable(
@@ -59,4 +55,9 @@ public class Profile {
   @OneToOne(cascade = CascadeType.ALL)
   @JoinColumn(name = "resume_id")
   private Resume resume;
+
+  public void addSkill(Skill skill, SkillProficiency proficiency) {
+    ProfileSkill profileSkill = new ProfileSkill(this, skill, proficiency);
+    this.profileSkills.add(profileSkill);
+  }
 }
