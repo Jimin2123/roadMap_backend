@@ -29,14 +29,29 @@ public class Certificate {
   @Column(length = 100)  // 자격구분명 (예: 국가기술자격 등)
   private String qualgbnm;
 
+  @Column(length = 100)
+  private String jmfldnm; // 종목명
+
   @Column(length = 100)  // 계열명
   private String seriesnm;
 
   @Column(length = 100)  // 자격구분코드 (예: T/S)
   private String qualgbcd;
 
-  @Column(length = 100)  // 종목명
-  private String jmfldnm;
+  @Column
+  private Integer mdobligfldcd; // 대분류 코드
+
+  @Column(length = 50)
+  private String mdobligfldnm; // 대분류 명
+
+  @Column
+  private Integer obligfldcd; // 중분류 코드
+
+  @Column(length = 50)
+  private String obligfldnm; // 중분류 명
+
+  @Column
+  private Integer seriescd; // 계열 코드
 
   @OneToMany(mappedBy = "certificate", fetch = FetchType.LAZY)
   @Builder.Default

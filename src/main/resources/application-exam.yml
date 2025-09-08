@@ -1,19 +1,26 @@
+# 프로퍼티스 추가 시키면 SQL INSERT 한번 실행 --spring.profiles.active=seed
+
 spring:
-  # MariaDB JDBC 설정
   datasource:
+    driver-class-name: org.mariadb.jdbc.Driver
     url: jdbc:mariadb://localhost:${DB_PORT}/${DB_NAME}
     username: ${DB_USER}
     password: ${DB_PASSWORD}
-    driver-class-name: org.mariadb.jdbc.Driver
 
   # Spring Boot의 JPA 설정
   jpa:
+    defer-datasource-initialization: true   # JPA 테이블 생성 후 data.sql 실행
     hibernate:
       ddl-auto: update # 테이블 자동 생성 전략 (update는 기존 테이블 유지 + 변경사항 자동 반영)
     show-sql: true # 콘솔에 실행되는 SQL 쿼리를 출력 (디버깅에 유용)
     properties:
       hibernate:
         format_sql: true # SQL 출력 시 보기 좋게 포맷팅
+  sql:
+    init:
+      mode: always                          # 내장DB가 아니어도 항상 실행
+      data-locations: classpath:database/*.sql  # ← 폴더/패턴 지정
+      encoding: UTF-8
 
   # Spring AI 설정
   ai:
@@ -58,6 +65,14 @@ qnet:
 saramin:
   api-key: ${SARAMIN_API_KEY}
   base-url: https://oapi.saramin.co.kr/job-search
+
+youth-policy:
+  base-url: https://www.youthcenter.go.kr/go/ythip/getPlcy
+  api-key: ${YOUTH_POLICY_API_KEY}
+
+career-net:
+  base-url: https://www.career.go.kr/cnet
+  api-key: ${CAREER_NET_API_KEY}
 
 jwt:
   secret-key: ${JWT_SECRET}
