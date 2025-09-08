@@ -2,35 +2,21 @@ package com.shingu.roadmap.member.domain;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.io.Serializable;
-import java.util.Objects;
 
 @Embeddable
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode
 public class ProfileCertificateId implements Serializable {
 
+  @Column(name = "profile_id", nullable = false)
   private Long profileId;
 
-  @Column(name = "certificate_jmcd") // 반드시 동일하게 지정
-  private String certificateId; // Certificate의 PK는 jmcd(String)
-
-  @Override
-  public boolean equals(Object o) {
-    if (this == o) return true;
-    if (!(o instanceof ProfileCertificateId)) return false;
-    ProfileCertificateId that = (ProfileCertificateId) o;
-    return Objects.equals(profileId, that.profileId) &&
-            Objects.equals(certificateId, that.certificateId);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(profileId, certificateId);
-  }
+  /** PK/FK 실제 컬럼명을 엔티티의 @JoinColumn(name="certificate_jmcd")와 일치시킵니다. */
+  @Column(name = "certificate_jmcd", nullable = false)
+  private String certificateId; // Certificate.jmcd
 }

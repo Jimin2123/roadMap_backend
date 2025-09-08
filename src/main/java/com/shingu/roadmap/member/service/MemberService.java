@@ -35,7 +35,6 @@ import java.util.stream.Collectors;
 @Transactional
 public class MemberService {
 
-    // 의존성 주입
     private final MemberRepository memberRepository;
     private final SkillRepository skillRepository;
     private final CertificateRepository certificateRepository;
@@ -65,7 +64,7 @@ public class MemberService {
         enrichWithDesiredJobs(req, profile);
         recommendCapabilities(profile);
 
-        member.setProfile(profile);
+        member.setProfile(profile); // cascade = ALL + orphanRemoval = true
         return MemberResponse.from(member);
     }
 
@@ -81,7 +80,6 @@ public class MemberService {
         return ProfileResponse.from(profile);
     }
 
-    @Transactional
     public Member findMemberById(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 회원입니다."));
@@ -91,51 +89,53 @@ public class MemberService {
     // 엔티티 생성 헬퍼
     // ────────────────────────────────────────────────────────────────────────────────
 
-    /** Member 엔티티 조립 */
+    /** Member 엔티티 조립 — 도메인 @Builder 사용 */
     private Member assembleMember(MemberRequest request) {
         Account account = createAccount(request.loginRequest());
         Address address = createAddress(request.addressRequest());
 
-        return new Member(
-                null,
-                request.name(),
-                "USER", // TODO: Enum 으로 치환 고려
-                request.birthDate(),
-                request.phoneNumber(),
-                account,
-                address,
-                null,
-                null,
-                null
-        );
+        return Member.builder()
+                .name(request.name())
+                .role("USER") // TODO: Enum 치환 고려
+                .birthDate(request.birthDate())
+                .phoneNumber(request.phoneNumber())
+                .account(account)
+                .address(address)
+                // profile, recommendedTrainings, refreshToken 은 필요 시 이후에 설정
+                .build();
     }
 
-    /** Account 엔티티 생성 */
+    /** Account 엔티티 생성 — 도메인 @Builder 사용 */
     private Account createAccount(LoginRequest req) {
-        return new Account(null, req.email(), passwordEncoder.encode(req.password()), null, null);
+        return Account.builder()
+                .email(req.email())
+                .password(passwordEncoder.encode(req.password()))
+                .build();
     }
 
-    /** Address 엔티티 생성 */
+    /** Address 엔티티 생성 — 도메인 @Builder 사용 */
     private Address createAddress(AddressRequest req) {
-        return new Address(null, req.address(), req.addressJibun(), req.addressDetail(), req.regionCity(), req.zonecode(), null);
+        if (req == null) return null;
+        return Address.builder()
+                .address(req.address())
+                .addressJibun(req.addressJibun())
+                .addressDetail(req.addressDetail())
+                .regionCity(req.regionCity())
+                .zonecode(req.zonecode())
+                .build();
     }
 
-    /** Profile 엔티티 기본 뼈대 생성 */
+    /** Profile 엔티티 기본 뼈대 생성 — 도메인 @Builder 사용 */
     private Profile assembleProfile(ProfileRequest req, Resume resume) {
-        // Profile 생성자 변경에 따라 profileSkills 필드가 초기화됨 (기존 skills 필드 -> profileSkills 필드)
-        return new Profile(
-                null,
-                req.educationLevel().name(),
-                null,
-                null,
-                null,
-                new HashSet<>(), // desiredJobs
-                new HashSet<>(), // certificates
-                new HashSet<>(), // profileSkills
-                new HashSet<>(), // desiredCapabilities
-                new HashSet<>(), // userCapabilities
-                resume
-        );
+        return Profile.builder()
+                .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
+                .desiredJobs(new HashSet<>())
+                .profileCertificates(new HashSet<>())
+                .profileSkills(new HashSet<>())
+                .desiredCapabilities(new HashSet<>())
+                .userCapabilities(new HashSet<>())
+                .resume(resume)
+                .build();
     }
 
     // ────────────────────────────────────────────────────────────────────────────────
@@ -144,46 +144,41 @@ public class MemberService {
 
     /**
      * 기술 스킬 추가
-     * SkillRequest(name, proficiency)를 받아 ProfileSkill 엔티티를 생성하고 Profile에 추가합니다.
+     * - 반드시 Profile의 편의 메서드(addSkill)를 사용해 양방향 일관성 유지
      */
     private void enrichWithSkills(ProfileRequest req, Profile profile) {
-        profile.getProfileSkills().clear(); // 기존 스킬 정보 초기화
-        if (CollectionUtils.isEmpty(req.skills())) return;
+        profile.getProfileSkills().clear(); // 기존 스킬 정보 초기화 (orphanRemoval)
+        if (req == null || CollectionUtils.isEmpty(req.skills())) return;
 
-        Set<ProfileSkill> profileSkills = req.skills().stream()
-                .map(skillRequest -> {
-                    // DB에 스킬이 없으면 새로 저장하고, 있으면 가져옵니다.
-                    Skill skill = skillRepository.findByName(skillRequest.name())
-                            .orElseGet(() -> skillRepository.save(new Skill(null, skillRequest.name())));
+        for (var skillReq : req.skills()) {
+            Skill skill = skillRepository.findByName(skillReq.name())
+                    .orElseGet(() -> skillRepository.save(Skill.builder().name(skillReq.name()).build()));
 
-                    // Profile, Skill, Proficiency 정보를 담은 ProfileSkill 엔티티를 생성합니다.
-                    return new ProfileSkill(profile, skill, skillRequest.proficiency());
-                })
-                .collect(Collectors.toSet());
-
-        profile.getProfileSkills().addAll(profileSkills);
+            ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
+            profile.addSkill(ps); // 양방향 setProfile 보장
+        }
     }
 
-    /** 자격증 추가 */
+    /** 자격증 추가 — addCertificate로 양방향 일관성 유지 */
     private void enrichWithCertificates(ProfileRequest req, Profile profile) {
-        profile.getProfileCertificates().clear();
-        if (CollectionUtils.isEmpty(req.certificates())) return;
+        profile.getProfileCertificates().clear(); // orphanRemoval
+        if (req == null || CollectionUtils.isEmpty(req.certificates())) return;
 
-        Set<ProfileCertificate> pcs = req.certificates().stream()
-                .map(c -> profileCertificateOf(profile, c.name(), c.year()))
-                .collect(Collectors.toSet());
-        profile.getProfileCertificates().addAll(pcs);
+        for (var certReq : req.certificates()) {
+            ProfileCertificate pc = profileCertificateOf(profile, certReq.name(), certReq.year());
+            profile.addCertificate(pc); // setProfile 보장
+        }
     }
 
     private ProfileCertificate profileCertificateOf(Profile profile, String certName, String year) {
         Certificate cert = certificateRepository.findByJmfldnm(certName)
                 .orElseThrow(() -> new IllegalArgumentException("자격증을 찾을 수 없습니다: " + certName));
-        return new ProfileCertificate(profile, cert, year);
+        return ProfileCertificate.of(profile, cert, year);
     }
 
     /** 희망 직무 추가 */
     private void enrichWithDesiredJobs(ProfileRequest req, Profile profile) {
-        if (CollectionUtils.isEmpty(req.desiredJobCodes())) return;
+        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()
                 .map(code -> saraminJobRepository.findById(code)
@@ -201,12 +196,8 @@ public class MemberService {
         recommendDesiredCapabilities(profile);
     }
 
-    /**
-     * 사용자 보유 역량 추천
-     * profile.getSkills() 대신 profile.getProfileSkills()에서 기술 정보를 가져옵니다.
-     */
+    /** 사용자 보유 역량 추천 */
     private void recommendUserCapabilities(Profile profile) {
-        // 조건문 변경: profile.getSkills() -> profile.getProfileSkills()
         if (profile.getProfileSkills().isEmpty() && profile.getProfileCertificates().isEmpty()) return;
 
         Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(profile)
@@ -223,7 +214,10 @@ public class MemberService {
     private void recommendDesiredCapabilities(Profile profile) {
         if (profile.getDesiredJobs().isEmpty()) return;
 
-        Set<String> names = profile.getDesiredJobs().stream().map(SaraminJob::getName).collect(Collectors.toSet());
+        Set<String> names = profile.getDesiredJobs().stream()
+                .map(SaraminJob::getName)
+                .collect(Collectors.toSet());
+
         Set<String> rec = openAiService.recommendDesiredJobCodeUsingAssistant(String.join(", ", names))
                 .blockOptional().orElseGet(HashSet::new);
 

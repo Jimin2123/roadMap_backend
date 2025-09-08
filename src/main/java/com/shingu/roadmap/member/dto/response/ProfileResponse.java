@@ -4,7 +4,6 @@ import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
-import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -23,10 +22,10 @@ public record ProfileResponse(
         @Schema(description = "자격증 목록")
         Set<CertificateDTO> certificates,
 
-        // 👇 이 부분이 변경되었습니다.
         @Schema(description = "보유 기술 목록")
         Set<ProfileSkillDTO> skills,
 
+        // NOTE: 엔티티 그대로 노출하면 직렬화/LAZY 이슈 가능 → 가능하면 코드/DTO로 변환 권장
         @Schema(description = "희망 직무 NCS 코드 목록")
         Set<NcsOccupation> desiredCapabilities,
 
@@ -39,11 +38,18 @@ public record ProfileResponse(
         public static ProfileResponse from(Profile profile) {
                 if (profile == null) return null;
 
+                // 아래 스트림은 컬렉션이 @Builder.Default 로 초기화되어 있어 NPE 안전.
                 return new ProfileResponse(
                         profile.getEducationLevel(),
-                        profile.getDesiredJobs().stream().map(SaraminJobDto::from).collect(Collectors.toSet()),
-                        profile.getProfileCertificates().stream().map(CertificateDTO::from).collect(Collectors.toSet()),
-                        profile.getProfileSkills().stream().map(ProfileSkillDTO::from).collect(Collectors.toSet()),
+                        profile.getDesiredJobs().stream()
+                                .map(SaraminJobDto::from)
+                                .collect(Collectors.toSet()),
+                        profile.getProfileCertificates().stream()
+                                .map(CertificateDTO::from)
+                                .collect(Collectors.toSet()),
+                        profile.getProfileSkills().stream()
+                                .map(ProfileSkillDTO::from)
+                                .collect(Collectors.toSet()),
                         profile.getDesiredCapabilities(),
                         profile.getUserCapabilities(),
                         ResumeResponse.from(profile.getResume())

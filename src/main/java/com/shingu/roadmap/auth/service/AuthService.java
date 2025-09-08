@@ -140,7 +140,20 @@ public class AuthService {
    */
   @Transactional
   public void logout(String refreshToken) {
-    refreshTokenRepository.findByToken(refreshToken).ifPresent(refreshTokenRepository::delete);
-    // 필요 시: 만료된 토큰 정리 배치/스케줄러도 운영 가능
+    if (refreshToken == null || refreshToken.isBlank()) return;
+
+    // 1) 토큰을 들고 있는 멤버를 찾는다 (단방향 1:1 연관 경로 사용)
+    Member member = memberRepository.findByRefreshToken_Token(refreshToken)
+            .orElse(null);
+
+    if (member != null && member.getRefreshToken() != null) {
+      // 2) 연관을 끊는다 → orphanRemoval=true 덕분에 토큰 행이 자동 삭제됨
+      member.updateRefreshToken(null);
+      // dirty checking으로 커밋 시점에 FK null + orphan delete가 처리됨
+    } else {
+      // 혹시 연관을 못 찾았을 때만 직접 삭제(일반적으로는 필요 없음)
+      refreshTokenRepository.findByToken(refreshToken)
+              .ifPresent(refreshTokenRepository::delete);
+    }
   }
 }

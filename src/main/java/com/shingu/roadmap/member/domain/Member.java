@@ -10,10 +10,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor
+@Table(name = "member",
+        indexes = {
+                @Index(name = "idx_member_name", columnList = "name"),
+                @Index(name = "idx_member_role", columnList = "role")
+        })
+@NamedEntityGraph( // ← 연관 한번에 패치하고 싶을 때 사용
+        name = "Member.withAccountProfileAddress",
+        attributeNodes = {
+                @NamedAttributeNode("account"),
+                @NamedAttributeNode("profile"),
+                @NamedAttributeNode("address")
+        }
+)
 @Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+@EqualsAndHashCode(of = "id")
+@Builder(toBuilder = true)
 public class Member {
+
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
@@ -22,37 +38,69 @@ public class Member {
   private String name;
 
   @Column(nullable = false, length = 20)
-  private String role; // ADMIN, USER 등
+  private String role;
 
-  private LocalDate birthDate; // 생년월일
+  private LocalDate birthDate;
 
-  private String phoneNumber; // 전화번호
+  @Column(length = 30)
+  private String phoneNumber;
 
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, optional = false)
   @JoinColumn(name = "account_id", unique = true, nullable = false)
   private Account account;
 
-  @Setter
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "address_id", unique = true)
   private Address address;
 
-  @Setter
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "profile_id", unique = true)
   private Profile profile;
 
   @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-  @JoinColumn(name = "member_id") // 이게 핵심: 외래 키를 Member 쪽이 관리
+  @JoinColumn(name = "member_id")
+  @Builder.Default
   private List<RecommendedTraining> recommendedTrainings = new ArrayList<>();
 
-  @Setter
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "refresh_token_id", unique = true)
   private RefreshToken refreshToken;
 
+  /* ===== 비즈니스 메서드 ===== */
+
+  public void changeName(String newName) { this.name = requireNonBlank(newName, "name"); }
+  public void changeRole(String newRole) { this.role = requireNonBlank(newRole, "role"); }
+  public void changeBirthDate(LocalDate newBirthDate) { this.birthDate = newBirthDate; }
+  public void changePhone(String newPhone) { this.phoneNumber = normalize(newPhone); }
+
   public void setAccount(Account account) {
-    this.account = account;
-    account.setMember(this);
+    if (account == null) throw new IllegalArgumentException("account must not be null");
+    this.account = account; // 주인 쪽만 세팅 — 역방향은 필요 시 서비스에서 보장
   }
+
+  public void setAddress(Address address) { this.address = address; }
+  public void clearAddress() { this.address = null; }
+
+  public void setProfile(Profile profile) { this.profile = profile; }
+  public void clearProfile() { this.profile = null; }
+
+  public void updateRefreshToken(RefreshToken token) { this.refreshToken = token; }
+
+  public void addRecommendedTraining(RecommendedTraining rt) {
+    if (rt != null && !this.recommendedTrainings.contains(rt)) this.recommendedTrainings.add(rt);
+  }
+
+  public void removeRecommendedTraining(RecommendedTraining rt) {
+    if (rt != null) this.recommendedTrainings.remove(rt);
+  }
+
+  /* ===== 편의 메서드 (선택) ===== */
+  public String getEmail() { return (account != null) ? account.getEmail() : null; }
+
+  /* ===== 유틸 ===== */
+  private static String requireNonBlank(String v, String field) {
+    if (v == null || v.isBlank()) throw new IllegalArgumentException(field + " must not be blank");
+    return v;
+  }
+  private static String normalize(String v) { return (v == null || v.isBlank()) ? null : v.trim(); }
 }
