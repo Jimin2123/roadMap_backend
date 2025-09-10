@@ -210,6 +210,7 @@ public class OpenAiService {
     return getNcsCodesFromAssistant(userPrompt);
   }
 
+
   public Mono<Set<String>> generateKeyword(Profile profile) {
     ProfileResponse dto = ProfileResponse.from(profile);
     String userJson;
@@ -247,7 +248,11 @@ public class OpenAiService {
             });
   }
 
-  // ... (resumeToText, formatPeriod 등 나머지 헬퍼 메서드는 기존과 동일)
+  /**
+   * AI가 응답한 문자열에서 유효한 NCS 코드를 추출합니다.
+   * @param raw
+   * @return
+   */
   public List<String> extractValidNcsCodes(String raw) {
     List<String> result = new ArrayList<>();
     // 정확히 8자리 숫자만 추출 (NCS 분류코드가 8자리라고 가정)
