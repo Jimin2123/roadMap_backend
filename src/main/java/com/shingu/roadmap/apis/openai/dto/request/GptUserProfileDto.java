@@ -1,6 +1,7 @@
 package com.shingu.roadmap.apis.openai.dto.request;
 
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationDto;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
@@ -26,8 +27,8 @@ public record GptUserProfileDto(
                     .toList(),
 
             profile.certificates().stream().map(CertificateDTO::name).toList(),
-            profile.desiredCapabilities().stream().map(NcsOccupation::getDutyCd).toList(),
-            profile.userCapabilities().stream().map(NcsOccupation::getDutyCd).toList()
+            profile.desiredCapabilities().stream().map(NcsOccupationDto::code).toList(),
+            profile.userCapabilities().stream().map(NcsOccupationDto::code).toList()
     );
   }
 }
