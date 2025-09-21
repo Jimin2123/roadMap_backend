@@ -93,18 +93,22 @@ public class SecurityEventPublisher {
             try {
                 InetAddress addr = InetAddress.getByName(ip);
                 if (addr instanceof Inet6Address) {
-                    // hextet 2개 + * + 마지막 hextet 노출
-                    String[] raw = ip.split(":");
-                    String[] parts = Arrays.stream(raw).filter(s -> !s.isEmpty()).toArray(String[]::new);
-                    if (parts.length == 0) return "::";
-                    String first = parts[0];
-                    String second = parts.length > 1 ? parts[1] : "";
-                    String last = parts[parts.length - 1];
-                    if (!second.isEmpty()) {
+                    // Normalize IPv6 address to full form and mask: first 2 hextets + * + last hextet
+                        String full = ((Inet6Address) addr).getHostAddress(); // expands compressed notation
+                        // Remove possible scope id (e.g., %eth0)
+                        int percentIdx = full.indexOf('%');
+                        if (percentIdx != -1) {
+                            full = full.substring(0, percentIdx);
+                        }
+                        String[] hextets = full.split(":");
+                        if (hextets.length < 3) {
+                            // fallback for very short/invalid addresses
+                            return full;
+                        }
+                        String first = hextets[0];
+                        String second = hextets[1];
+                        String last = hextets[hextets.length - 1];
                         return first + ":" + second + ":*:" + last;
-                    } else {
-                        return first + ":*:" + last;
-                    }
                 }
             } catch (Exception ignore) {
                 // 파싱 실패 시에도 안전 문자열 반환
