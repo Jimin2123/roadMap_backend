@@ -41,12 +41,17 @@ public class ProfileCertificate {
     this.profile = profile;
     this.certificate = certificate;
     this.acquiredYear = normalize(acquiredYear);
+  }
 
-    // ★ id 객체는 이미 new 상태. 값만 채워준다.
-    if (this.id == null) this.id = new ProfileCertificateId();
-    // 주의: 두 연관이 '영속 상태'여야 getId()/getJmcd()가 값이 있다.
-    this.id.setProfileId(profile.getId());
-    this.id.setCertificateId(certificate.getJmcd());
+  @PrePersist
+  private void initializeId() {
+    if (this.id == null) {
+      this.id = new ProfileCertificateId();
+    }
+    if (this.profile != null && this.certificate != null) {
+      this.id.setProfileId(this.profile.getId());
+      this.id.setCertificateId(this.certificate.getJmcd());
+    }
   }
 
   public static ProfileCertificate of(Profile profile, Certificate certificate, String acquiredYear) {

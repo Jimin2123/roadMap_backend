@@ -45,6 +45,7 @@ public class ProfileSkill {
     this.proficiency = proficiency;
   }
 
+
   public void changeProficiency(SkillProficiency p) {
     if (p == null) throw new IllegalArgumentException("proficiency must not be null");
     this.proficiency = p;

@@ -43,9 +43,17 @@ public interface ResumeControllerSwagger {
   )
   ResponseEntity<ResumeResponse> getResume(CustomUserDetails userDetails);
 
+  @SecurityRequirement(name = "bearerAuth")
   @Operation(
           summary = "이력서 수정",
-          description = "사용자가 작성한 이력서를 수정합니다."
+          description = "사용자가 작성한 이력서를 수정합니다.",
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "이력서 수정 성공",
+                          content = @Content(schema = @Schema(implementation = MemberResponse.class))
+                  ),
+          }
   )
-  ResponseEntity<Void> updateResume();
+  ResponseEntity<MemberResponse> updateResume(CustomUserDetails userDetails, ProfileRequest request);
 }

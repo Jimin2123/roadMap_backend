@@ -9,6 +9,7 @@ import com.shingu.roadmap.auth.domain.Account;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.common.domain.Skill;
+import com.shingu.roadmap.common.enums.MemberRole;
 import com.shingu.roadmap.common.repository.CertificateRepository;
 import com.shingu.roadmap.common.repository.SkillRepository;
 import com.shingu.roadmap.member.domain.*;
@@ -113,7 +114,7 @@ public class MemberService {
 
         return Member.builder()
                 .name(request.name())
-                .role("USER")
+                .role(MemberRole.USER.getValue())
                 .birthDate(request.birthDate())
                 .phoneNumber(request.phoneNumber())
                 .account(account)
