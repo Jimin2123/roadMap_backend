@@ -45,16 +45,6 @@ public class ProfileSkill {
     this.proficiency = proficiency;
   }
 
-  @PrePersist
-  private void initializeId() {
-    if (this.id == null) {
-      this.id = new ProfileSkillId();
-    }
-    if (this.profile != null && this.skill != null) {
-      this.id.setProfileId(this.profile.getId());
-      this.id.setSkillId(this.skill.getId());
-    }
-  }
 
   public void changeProficiency(SkillProficiency p) {
     if (p == null) throw new IllegalArgumentException("proficiency must not be null");
