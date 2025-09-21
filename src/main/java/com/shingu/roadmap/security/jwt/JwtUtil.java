@@ -1,9 +1,9 @@
 package com.shingu.roadmap.security.jwt;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -11,6 +11,7 @@ import java.security.Key;
 import java.util.Date;
 
 @Component
+@Slf4j
 public class JwtUtil {
 
   private final JwtProperties jwtProperties;
@@ -20,9 +21,8 @@ public class JwtUtil {
   }
 
   public String generateToken(String tokenType, TokenPayload payload) {
-
     JwtProperties.TokenProperties tokenProperties =
-            "access".equals(tokenType) ? jwtProperties.getAccessToken() : jwtProperties.getRefreshToken();
+            "access".equals(tokenType) ? jwtProperties.getAccess() : jwtProperties.getRefresh();
 
     Key key = Keys.hmacShaKeyFor(tokenProperties.getSecretKey().getBytes(StandardCharsets.UTF_8));
 
@@ -68,10 +68,51 @@ public class JwtUtil {
     }
   }
 
-  public Claims parseClaims(String tokenType,String token) {
-    String secretKey = "access".equals(tokenType)
-            ? jwtProperties.getAccessToken().getSecretKey()
-            : jwtProperties.getRefreshToken().getSecretKey();
+  public TokenValidationResult validateToken(String token, TokenType tokenType) {
+    try {
+      Claims claims = parseClaimsInternal(token, tokenType);
+
+      // Audience 검증
+      if (!jwtProperties.getAudience().equals(claims.getAudience())) {
+        return TokenValidationResult.error("Invalid audience");
+      }
+
+      return TokenValidationResult.valid(claims);
+
+    } catch (ExpiredJwtException e) {
+      log.warn("Token expired: {}", e.getMessage());
+      return TokenValidationResult.expired();
+
+    } catch (MalformedJwtException e) {
+      log.warn("Malformed token: {}", e.getMessage());
+      return TokenValidationResult.malformed();
+
+    } catch (SignatureException e) {
+      log.error("Token signature verification failed: {}", e.getMessage());
+      return TokenValidationResult.signatureInvalid();
+
+    } catch (UnsupportedJwtException e) {
+      log.warn("Unsupported token: {}", e.getMessage());
+      return TokenValidationResult.unsupported();
+
+    } catch (Exception e) {
+      log.error("Unexpected error during token validation: {}", e.getMessage(), e);
+      return TokenValidationResult.error(e.getMessage());
+    }
+  }
+
+  public Claims parseClaims(String tokenType, String token) {
+    try {
+      return parseClaimsInternal(token, TokenType.valueOf(tokenType.toUpperCase()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid token type: " + tokenType, e);
+    }
+  }
+
+  private Claims parseClaimsInternal(String token, TokenType tokenType) {
+    String secretKey = TokenType.ACCESS.equals(tokenType)
+            ? jwtProperties.getAccess().getSecretKey()
+            : jwtProperties.getRefresh().getSecretKey();
 
     Key key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
 
