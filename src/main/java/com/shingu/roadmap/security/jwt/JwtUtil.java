@@ -107,7 +107,11 @@ public class JwtUtil {
   }
 
   public Claims parseClaims(String tokenType, String token) {
-    return parseClaimsInternal(token, TokenType.valueOf(tokenType.toUpperCase()));
+    try {
+      return parseClaimsInternal(token, TokenType.valueOf(tokenType.toUpperCase()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid token type: " + tokenType, e);
+    }
   }
 
   private Claims parseClaimsInternal(String token, TokenType tokenType) {
