@@ -117,8 +117,7 @@ public class SecurityConfig {
   private boolean isDevEnvironment() {
     String[] activeProfiles = environment.getActiveProfiles();
     return activeProfiles.length == 0 ||
-           java.util.Arrays.asList(activeProfiles).contains("dev") ||
-           java.util.Arrays.asList(activeProfiles).contains("local");
+           java.util.Arrays.stream(activeProfiles).anyMatch(profile -> profile.equals("dev") || profile.equals("local"));
   }
 
   @Bean
