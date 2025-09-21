@@ -6,6 +6,7 @@ import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.service.MemberService;
 import com.shingu.roadmap.security.model.CustomUserDetails;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -21,7 +22,7 @@ public class MemberController implements MemberControllerSwagger {
     @Override
     @PostMapping("/api/v1/member")
     public ResponseEntity<MemberResponse> signUp(
-            @RequestBody MemberRequest memberRequest
+            @Valid @RequestBody MemberRequest memberRequest
     ) {
         MemberResponse response = memberService.signUp(memberRequest);
         return ResponseEntity.ok(response);
