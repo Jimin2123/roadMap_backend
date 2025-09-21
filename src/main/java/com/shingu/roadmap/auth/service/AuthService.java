@@ -3,6 +3,7 @@ package com.shingu.roadmap.auth.service;
 import com.shingu.roadmap.auth.domain.RefreshToken;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.auth.dto.response.LoginResponse;
+import com.shingu.roadmap.auth.exception.*;
 import com.shingu.roadmap.auth.repository.RefreshTokenRepository;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.repository.MemberRepository;
@@ -12,8 +13,10 @@ import com.shingu.roadmap.security.model.CustomUserDetails;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.stereotype.Service;
@@ -46,14 +49,18 @@ public class AuthService {
    */
   @Transactional
   public LoginResponse login(LoginRequest request) {
-    // 1) 인증
-    Authentication authentication = authenticationManager.authenticate(
-            new UsernamePasswordAuthenticationToken(request.email(), request.password())
-    );
+    try {
+      // 1) 인증
+      Authentication authentication = authenticationManager.authenticate(
+              new UsernamePasswordAuthenticationToken(request.email(), request.password())
+      );
+    } catch (AuthenticationException e) {
+      throw new InvalidCredentialsException();
+    }
 
     // 2) 회원 로드
     Member member = memberRepository.findByAccountEmail(request.email())
-            .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+            .orElseThrow(() -> new UserNotFoundException(request.email()));
 
     // 3) 마지막 로그인 도메인 갱신
     member.getAccount().markLoggedIn(LocalDateTime.now());
@@ -91,23 +98,35 @@ public class AuthService {
   public LoginResponse refreshToken(String refreshToken) {
     // 1) 존재/만료 확인
     RefreshToken tokenEntity = refreshTokenRepository.findByToken(refreshToken)
-            .orElseThrow(() -> new RuntimeException("유효하지 않은 Refresh Token"));
+            .orElseThrow(() -> new InvalidRefreshTokenException());
 
     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
       refreshTokenRepository.delete(tokenEntity);
-      throw new RuntimeException("Refresh Token 만료됨");
+      throw new ExpiredRefreshTokenException();
     }
 
     // 2) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
-      throw new RuntimeException("Refresh Token 무결성 검증 실패");
+      throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
     }
 
-    Claims claims = jwtUtil.parseClaims("refresh", refreshToken);
+    Claims claims;
+    try {
+      claims = jwtUtil.parseClaims("refresh", refreshToken);
+    } catch (Exception e) {
+      throw new TokenIntegrityException("토큰 파싱 실패", e);
+    }
+
     String email = claims.get("email", String.class);
 
     // 3) 사용자 로드
-    UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+    UserDetails userDetails;
+    try {
+      userDetails = userDetailsService.loadUserByUsername(email);
+    } catch (Exception e) {
+      throw new UserNotFoundException(email);
+    }
+
     Member member = ((CustomUserDetails) userDetails).getMember();
 
     TokenPayload payload = new TokenPayload(
