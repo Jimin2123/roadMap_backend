@@ -173,11 +173,19 @@ public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
     public static class ErrorResponse {
         private String code;
         private String message;
-        private LocalDateTime timestamp = LocalDateTime.now();
+        private LocalDateTime timestamp;
 
         public ErrorResponse(String code, String message) {
             this.code = code;
             this.message = message;
+            this.timestamp = LocalDateTime.now();
+            this.timestamp = LocalDateTime.now();
+        }
+
+        public ErrorResponse(String code, String message, LocalDateTime timestamp) {
+            this.code = code;
+            this.message = message;
+            this.timestamp = timestamp;
         }
     }
 }
