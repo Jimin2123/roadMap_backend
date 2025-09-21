@@ -72,11 +72,6 @@ public class JwtUtil {
     try {
       Claims claims = parseClaimsInternal(token, tokenType);
 
-      // 토큰 만료 확인
-      if (claims.getExpiration().before(new Date())) {
-        return TokenValidationResult.expired();
-      }
-
       // Audience 검증
       if (!jwtProperties.getAudience().equals(claims.getAudience())) {
         return TokenValidationResult.error("Invalid audience");
