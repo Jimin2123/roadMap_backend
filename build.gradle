@@ -43,6 +43,12 @@ repositories {
 }
 
 dependencies {
+    // Spring Cloud BOM for dependency management
+    implementation platform('org.springframework.cloud:spring-cloud-dependencies:2023.0.0')
+
+    // TestContainers BOM for testing
+    testImplementation platform('org.testcontainers:testcontainers-bom:1.19.3')
+
     // Spring Core
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -78,6 +84,11 @@ dependencies {
 
     // 테스트
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'io.projectreactor:reactor-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mariadb'
+    testImplementation 'org.testcontainers:redis'
 
     // Swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6'
@@ -85,6 +96,26 @@ dependencies {
     // Redis & Cache
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+    // WebFlux for OpenAI API Client (Reactive)
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // Caffeine Cache for L1 Memory Cache
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+
+    // Micrometer for Metrics
+    implementation 'io.micrometer:micrometer-core'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
+    // Resilience4j for Circuit Breaker (Optional)
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j:3.1.0'
+
+    // Apache Commons for Utilities
+    implementation 'org.apache.commons:commons-lang3:3.13.0'
+    implementation 'commons-codec:commons-codec:1.16.0'
+
+    // RestTemplate for Notification Service
+    implementation 'org.springframework.boot:spring-boot-starter-web'
 
     // XML Processing
     implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
