@@ -1,6 +1,9 @@
 package com.shingu.roadmap.security.config;
 
-import com.shingu.roadmap.common.filter.JwtAuthenticationFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shingu.roadmap.security.event.SecurityEventPublisher;
+import com.shingu.roadmap.security.filter.EnhancedJwtAuthenticationFilter;
+import com.shingu.roadmap.security.filter.SecurityHeadersFilter;
 import com.shingu.roadmap.security.handler.JwtAccessDeniedHandler;
 import com.shingu.roadmap.security.handler.JwtAuthenticationEntryPoint;
 import com.shingu.roadmap.security.jwt.JwtUtil;
@@ -13,6 +16,7 @@ import io.swagger.v3.oas.annotations.security.SecurityScheme;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -46,6 +50,9 @@ public class SecurityConfig {
   private final CustomUserDetailsService customUserDetailsService;
   private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
   private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+  private final SecurityEventPublisher securityEventPublisher;
+  private final ObjectMapper objectMapper;
+  private final Environment environment;
 
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -76,21 +83,42 @@ public class SecurityConfig {
                     ).permitAll()
                     .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(securityHeadersFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(enhancedJwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class)
             .build();
   }
 
   @Bean
-  public CorsConfigurationSource corsConfigurationSource() {
+  public CorsConfigurationSource corsConfigurationSource(CorsProperties corsProperties) {
     CorsConfiguration config = new CorsConfiguration();
-    config.addAllowedOriginPattern("*"); // 🔒 배포 시 도메인 지정 권장
-    config.addAllowedMethod("*");
-    config.addAllowedHeader("*");
-    config.setAllowCredentials(true);
+
+    if (corsProperties.getAllowedOrigins().isEmpty()) {
+      // 개발 환경에서만 모든 origin 허용
+      if (isDevEnvironment()) {
+        config.addAllowedOriginPattern("*");
+      } else {
+        throw new IllegalStateException("Production environment must specify allowed origins");
+      }
+    } else {
+      corsProperties.getAllowedOrigins().forEach(config::addAllowedOrigin);
+    }
+
+    corsProperties.getAllowedMethods().forEach(config::addAllowedMethod);
+    corsProperties.getAllowedHeaders().forEach(config::addAllowedHeader);
+    corsProperties.getExposedHeaders().forEach(config::addExposedHeader);
+    config.setAllowCredentials(corsProperties.isAllowCredentials());
+    config.setMaxAge(corsProperties.getMaxAge());
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", config);
     return source;
+  }
+
+  private boolean isDevEnvironment() {
+    String[] activeProfiles = environment.getActiveProfiles();
+    return activeProfiles.length == 0 ||
+           java.util.Arrays.asList(activeProfiles).contains("dev") ||
+           java.util.Arrays.asList(activeProfiles).contains("local");
   }
 
   @Bean
@@ -104,7 +132,17 @@ public class SecurityConfig {
   }
 
   @Bean
-  public JwtAuthenticationFilter jwtAuthenticationFilter() {
-    return new JwtAuthenticationFilter(jwtUtil, customUserDetailsService);
+  public EnhancedJwtAuthenticationFilter enhancedJwtAuthenticationFilter() {
+    return new EnhancedJwtAuthenticationFilter(
+        jwtUtil,
+        customUserDetailsService,
+        securityEventPublisher,
+        objectMapper
+    );
+  }
+
+  @Bean
+  public SecurityHeadersFilter securityHeadersFilter() {
+    return new SecurityHeadersFilter(environment);
   }
 }
