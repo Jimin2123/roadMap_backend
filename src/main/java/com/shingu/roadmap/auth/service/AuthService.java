@@ -5,6 +5,8 @@ import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.auth.dto.response.LoginResponse;
 import com.shingu.roadmap.auth.exception.*;
 import com.shingu.roadmap.auth.repository.RefreshTokenRepository;
+import com.shingu.roadmap.common.exception.CustomException;
+import com.shingu.roadmap.common.exception.ErrorCode;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.security.jwt.JwtUtil;
@@ -19,6 +21,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,18 +52,32 @@ public class AuthService {
    */
   @Transactional
   public LoginResponse login(LoginRequest request) {
+    // 1) 인증
+    Authentication authentication;
     try {
-      // 1) 인증
-      Authentication authentication = authenticationManager.authenticate(
+      authentication = authenticationManager.authenticate(
               new UsernamePasswordAuthenticationToken(request.email(), request.password())
       );
+    } catch (BadCredentialsException e) {
+      throw new CustomException(ErrorCode.INVALID_CREDENTIALS);
+    } catch (UsernameNotFoundException e) {
+      throw new CustomException(ErrorCode.MEMBER_NOT_FOUND);
     } catch (AuthenticationException e) {
-      throw new InvalidCredentialsException();
+      // 기타 인증 예외 처리
+      throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "인증 중 알 수 없는 오류가 발생했습니다.");
+//     try {
+//       // 1) 인증
+//       Authentication authentication = authenticationManager.authenticate(
+//               new UsernamePasswordAuthenticationToken(request.email(), request.password())
+//       );
+//     } catch (AuthenticationException e) {
+//       throw new InvalidCredentialsException();
     }
 
-    // 2) 회원 로드
+    // 2) 회원 로드 (인증 성공 후에도 혹시 모를 경우를 대비)
     Member member = memberRepository.findByAccountEmail(request.email())
-            .orElseThrow(() -> new UserNotFoundException(request.email()));
+            .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+//             .orElseThrow(() -> new UserNotFoundException(request.email()));
 
     // 3) 마지막 로그인 도메인 갱신
     member.getAccount().markLoggedIn(LocalDateTime.now());
@@ -98,23 +115,30 @@ public class AuthService {
   public LoginResponse refreshToken(String refreshToken) {
     // 1) 존재/만료 확인
     RefreshToken tokenEntity = refreshTokenRepository.findByToken(refreshToken)
-            .orElseThrow(() -> new InvalidRefreshTokenException());
+            .orElseThrow(() -> new CustomException(ErrorCode.INVALID_TOKEN, "유효하지 않은 Refresh Token입니다."));
 
     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
       refreshTokenRepository.delete(tokenEntity);
-      throw new ExpiredRefreshTokenException();
+      throw new CustomException(ErrorCode.INVALID_TOKEN, "Refresh Token이 만료되었습니다.");
+//             .orElseThrow(() -> new InvalidRefreshTokenException());
+
+//     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
+//       refreshTokenRepository.delete(tokenEntity);
+//       throw new ExpiredRefreshTokenException();
     }
 
     // 2) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
-      throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
-    }
+      throw new CustomException(ErrorCode.INVALID_TOKEN, "Refresh Token 무결성 검증에 실패했습니다.");
 
-    Claims claims;
-    try {
-      claims = jwtUtil.parseClaims("refresh", refreshToken);
-    } catch (Exception e) {
-      throw new TokenIntegrityException("토큰 파싱 실패", e);
+// //       throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
+//     }
+
+//     Claims claims;
+//     try {
+//       claims = jwtUtil.parseClaims("refresh", refreshToken);
+//     } catch (Exception e) {
+//       throw new TokenIntegrityException("토큰 파싱 실패", e);
     }
 
     String email = claims.get("email", String.class);
