@@ -3,6 +3,7 @@ package com.shingu.roadmap.auth.service;
 import com.shingu.roadmap.auth.domain.RefreshToken;
 import com.shingu.roadmap.auth.dto.request.LoginRequest;
 import com.shingu.roadmap.auth.dto.response.LoginResponse;
+import com.shingu.roadmap.auth.exception.*;
 import com.shingu.roadmap.auth.repository.RefreshTokenRepository;
 import com.shingu.roadmap.common.exception.CustomException;
 import com.shingu.roadmap.common.exception.ErrorCode;
@@ -64,11 +65,19 @@ public class AuthService {
     } catch (AuthenticationException e) {
       // 기타 인증 예외 처리
       throw new CustomException(ErrorCode.INTERNAL_SERVER_ERROR, "인증 중 알 수 없는 오류가 발생했습니다.");
+//     try {
+//       // 1) 인증
+//       Authentication authentication = authenticationManager.authenticate(
+//               new UsernamePasswordAuthenticationToken(request.email(), request.password())
+//       );
+//     } catch (AuthenticationException e) {
+//       throw new InvalidCredentialsException();
     }
 
     // 2) 회원 로드 (인증 성공 후에도 혹시 모를 경우를 대비)
     Member member = memberRepository.findByAccountEmail(request.email())
             .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+//             .orElseThrow(() -> new UserNotFoundException(request.email()));
 
     // 3) 마지막 로그인 도메인 갱신
     member.getAccount().markLoggedIn(LocalDateTime.now());
@@ -111,18 +120,37 @@ public class AuthService {
     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
       refreshTokenRepository.delete(tokenEntity);
       throw new CustomException(ErrorCode.INVALID_TOKEN, "Refresh Token이 만료되었습니다.");
+//             .orElseThrow(() -> new InvalidRefreshTokenException());
+
+//     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
+//       refreshTokenRepository.delete(tokenEntity);
+//       throw new ExpiredRefreshTokenException();
     }
 
     // 2) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
       throw new CustomException(ErrorCode.INVALID_TOKEN, "Refresh Token 무결성 검증에 실패했습니다.");
+
+// //       throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
+//     }
+
+//     Claims claims;
+//     try {
+//       claims = jwtUtil.parseClaims("refresh", refreshToken);
+//     } catch (Exception e) {
+//       throw new TokenIntegrityException("토큰 파싱 실패", e);
     }
 
-    Claims claims = jwtUtil.parseClaims("refresh", refreshToken);
     String email = claims.get("email", String.class);
 
     // 3) 사용자 로드
-    UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+    UserDetails userDetails;
+    try {
+      userDetails = userDetailsService.loadUserByUsername(email);
+    } catch (Exception e) {
+      throw new UserNotFoundException(email);
+    }
+
     Member member = ((CustomUserDetails) userDetails).getMember();
 
     TokenPayload payload = new TokenPayload(

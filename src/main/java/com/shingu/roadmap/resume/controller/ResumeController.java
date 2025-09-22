@@ -5,6 +5,7 @@ import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import com.shingu.roadmap.resume.service.ResumeService;
 import com.shingu.roadmap.security.model.CustomUserDetails;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,7 +24,7 @@ public class ResumeController implements ResumeControllerSwagger {
   @PostMapping("/api/v1/resume")
   public ResponseEntity<MemberResponse> createResume(
           @AuthenticationPrincipal CustomUserDetails userDetails,
-          @RequestBody ProfileRequest request
+          @Valid @RequestBody ProfileRequest request
   ) {
     Long memberId = userDetails.getMemberId();
 
@@ -44,7 +45,12 @@ public class ResumeController implements ResumeControllerSwagger {
 
   @Override
   @PutMapping("/api/v1/resume")
-  public ResponseEntity<Void> updateResume() {
-    return null;
+  public ResponseEntity<MemberResponse> updateResume(
+          @AuthenticationPrincipal CustomUserDetails userDetails,
+          @Valid @RequestBody ProfileRequest request
+  ) {
+    Long memberId = userDetails.getMemberId();
+    MemberResponse response = resumeService.updateResume(memberId, request);
+    return ResponseEntity.ok(response);
   }
 }

@@ -65,6 +65,58 @@ public class ResumeService {
     return memberService.updateProfile(memberId, request, resume);
   }
 
+  @Transactional
+  public MemberResponse updateResume(Long memberId, ProfileRequest request) {
+    if (request == null || request.resume() == null) {
+      throw new IllegalArgumentException("ResumeRequest가 없습니다.");
+    }
+
+    Member member = memberService.findMemberById(memberId);
+    if (member.getProfile() == null) {
+      throw new EntityNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
+    }
+
+    Resume existingResume = member.getProfile().getResume();
+    ResumeRequest resumeReq = request.resume();
+
+    // 기존 Resume이 없으면 새로 생성, 있으면 업데이트
+    Resume resume = existingResume != null ? existingResume : Resume.builder().build();
+
+    // Introduction / Education 업데이트 (단방향 1:1)
+    if (resumeReq.introduction() != null) {
+      resume.setIntroduction(toIntroduction(resumeReq.introduction()));
+    } else {
+      resume.clearIntroduction();
+    }
+
+    if (resumeReq.education() != null) {
+      resume.setEducation(toEducation(resumeReq.education()));
+    } else {
+      resume.clearEducation();
+    }
+
+    // Activities / Projects 업데이트 (기존 데이터 클리어 후 새로 추가)
+    resume.getActivities().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.activities())) {
+      for (ActivityRequest aReq : resumeReq.activities()) {
+        Activity a = toActivity(aReq);
+        resume.addActivity(a);
+      }
+    }
+
+    resume.getProjects().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.projects())) {
+      for (ProjectRequest pReq : resumeReq.projects()) {
+        Project p = toProjectSkeleton(pReq);
+        attachProjectExtras(p, pReq);
+        resume.addProject(p);
+      }
+    }
+
+    // MemberService로 위임하여 Profile 업데이트
+    return memberService.updateProfile(memberId, request, resume);
+  }
+
   /* ============================ Queries ============================ */
 
   @Transactional(readOnly = true)

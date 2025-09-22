@@ -1,6 +1,6 @@
 package com.shingu.roadmap.member.dto.response;
 
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationDto;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
@@ -35,12 +35,11 @@ public record ProfileResponse(
         @Schema(description = "보유 기술 목록")
         Set<ProfileSkillDTO> skills,
 
-        // NOTE: 엔티티 그대로 노출하면 직렬화/LAZY 이슈 가능 → 가능하면 코드/DTO로 변환 권장
         @Schema(description = "희망 직무 NCS 코드 목록")
-        Set<NcsOccupation> desiredCapabilities,
+        Set<NcsOccupationDto> desiredCapabilities,
 
         @Schema(description = "사용자 NCS 코드 목록")
-        Set<NcsOccupation> userCapabilities,
+        Set<NcsOccupationDto> userCapabilities,
 
         @Schema(description = "이력서 정보")
         ResumeResponse resume
@@ -63,8 +62,12 @@ public record ProfileResponse(
                         profile.getProfileSkills().stream()
                                 .map(ProfileSkillDTO::from)
                                 .collect(Collectors.toSet()),
-                        profile.getDesiredCapabilities(),
-                        profile.getUserCapabilities(),
+                        profile.getDesiredCapabilities().stream()
+                                .map(NcsOccupationDto::from)
+                                .collect(Collectors.toSet()),
+                        profile.getUserCapabilities().stream()
+                                .map(NcsOccupationDto::from)
+                                .collect(Collectors.toSet()),
                         ResumeResponse.from(profile.getResume())
                 );
         }
