@@ -10,52 +10,89 @@ import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
 import com.shingu.roadmap.apis.ncs.repository.NcsTrainingStandardRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class NcsApiService {
 
   private final NcsApiClient ncsApiClient;
   private final NcsOccupationRepository ncsOccupationRepository;
   private final NcsTrainingStandardRepository ncsTrainingStandardRepository;
 
+  // 병렬 처리를 위한 전용 스레드 풀
+  private final Executor ncsProcessingExecutor = Executors.newFixedThreadPool(5);
+
   /**
-   * NCS 코드 유효성 검사 및 등록
+   * NCS 코드 유효성 검사 및 등록 (병렬 처리 최적화)
    * @param ncsCodes
    * @return
    */
   public Set<NcsOccupation> filterValidNcsCodes(Set<String> ncsCodes) {
-    Set<NcsOccupation> validOccupations = new HashSet<>();
-
-    for (String ncsCode : ncsCodes) {
-      // 이미 존재하면 조회해서 추가
-      if (ncsOccupationRepository.existsById(ncsCode)) {
-        ncsOccupationRepository.findById(ncsCode).ifPresent(validOccupations::add);
-        continue;
-      }
-
-      // 존재하지 않으면 API 호출 및 등록 시도
-      boolean success = fetchAndRegisterNcsOccupation(ncsCode);
-      if (success) {
-        ncsOccupationRepository.findById(ncsCode).ifPresent(validOccupations::add);
-      }
+    if (ncsCodes == null || ncsCodes.isEmpty()) {
+      return new HashSet<>();
     }
 
+    // 1. 이미 DB에 존재하는 코드들 먼저 조회
+    Map<String, NcsOccupation> existingOccupations = ncsOccupationRepository.findAllById(ncsCodes)
+            .stream()
+            .collect(Collectors.toMap(NcsOccupation::getDutyCd, occ -> occ));
+
+    // 2. 존재하지 않는 코드들만 병렬로 처리
+    Set<String> missingCodes = ncsCodes.stream()
+            .filter(code -> !existingOccupations.containsKey(code))
+            .collect(Collectors.toSet());
+
+    if (missingCodes.isEmpty()) {
+      return new HashSet<>(existingOccupations.values());
+    }
+
+    log.info("Processing {} missing NCS codes in parallel", missingCodes.size());
+
+    // 3. 병렬로 API 호출 및 등록
+    List<CompletableFuture<Optional<NcsOccupation>>> futures = missingCodes.stream()
+            .map(ncsCode -> CompletableFuture
+                    .supplyAsync(() -> {
+                      try {
+                        boolean success = fetchAndRegisterNcsOccupation(ncsCode);
+                        return success ? ncsOccupationRepository.findById(ncsCode) : Optional.<NcsOccupation>empty();
+                      } catch (Exception e) {
+                        log.warn("Failed to process NCS code {}: {}", ncsCode, e.getMessage());
+                        return Optional.<NcsOccupation>empty();
+                      }
+                    }, ncsProcessingExecutor))
+            .collect(Collectors.toList());
+
+    // 4. 모든 비동기 작업 완료 대기
+    Set<NcsOccupation> validOccupations = new HashSet<>(existingOccupations.values());
+    futures.forEach(future -> {
+      try {
+        future.join().ifPresent(validOccupations::add);
+      } catch (Exception e) {
+        log.warn("Failed to join future: {}", e.getMessage());
+      }
+    });
+
+    log.info("Successfully processed {} out of {} NCS codes", validOccupations.size(), ncsCodes.size());
     return validOccupations;
   }
 
   /**
-   * NCS 직무 정보 조회 및 등록
+   * NCS 직무 정보 조회 및 등록 (캐싱 적용)
    * @param ncsCode
    * @return
    */
+  @Cacheable(value = "ncsOccupation", key = "#ncsCode")
   public boolean fetchAndRegisterNcsOccupation(String ncsCode) {
     // 1. 직무 정보 조회
     NcsOccupationResponse response = ncsApiClient.getOccupation(ncsCode);

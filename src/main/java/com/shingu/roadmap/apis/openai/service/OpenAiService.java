@@ -5,16 +5,20 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shingu.roadmap.apis.careernet.service.CareerNetCodeProvider;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.openai.cache.OpenAiCacheKeyGenerator;
 import com.shingu.roadmap.apis.openai.client.OpenAiClient;
+import com.shingu.roadmap.apis.openai.config.OpenAiCacheConfig;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserPromptRequest;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
+import com.shingu.roadmap.apis.openai.logging.SecureLogger;
 import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.resume.domain.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -30,11 +34,13 @@ public class OpenAiService {
   private final OpenAiClient openAiClient;
   private final ObjectMapper objectMapper;
   private final CareerNetCodeProvider careerNetCodeProvider;
+  private final SecureLogger secureLogger;
 
   /**
    * 사용자 정보를 바탕으로 부족한 역량을 보완할 훈련과정을 추천합니다.
    * (AI가 주어진 목록 내에서만 응답하도록 프롬프트를 강화했습니다.)
    */
+  @Cacheable(value = OpenAiCacheConfig.TRAINING_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> recommendTrainingCourse(TrainingRecommendationRequest request) {
     if (request == null || request.userProfile() == null || request.trainingCourses() == null) {
       return Mono.error(new IllegalArgumentException("요청 정보가 올바르지 않습니다."));
@@ -90,6 +96,7 @@ public class OpenAiService {
    * 사용자의 상세 정보를 바탕으로 커리어넷 API 검색에 적합한 분류 코드를 추천합니다.
    * (AI가 주어진 목록 내에서만 응답하도록 프롬프트를 강화했습니다.)
    */
+  @Cacheable(value = OpenAiCacheConfig.SEARCH_CODES_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Map<String, String>> recommendSearchCodes(Profile profile) {
     String jobInfoCodesJson = careerNetCodeProvider.getJobInfoCodesJson();
     String encyclopediaCodesJson = careerNetCodeProvider.getEncyclopediaCodesJson();
@@ -159,6 +166,7 @@ public class OpenAiService {
             });
   }
 
+  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> recommendDesiredJobCodeUsingAssistant(String desiredJob) {
     String userPrompt = String.format(
             """
@@ -178,6 +186,7 @@ public class OpenAiService {
    * Profile 객체를 받아 사용자의 실제 역량에 기반한 NCS 코드를 추천합니다.
    * AI가 잘못된 추론을 하지 못하도록 프롬프트를 대폭 강화했습니다.
    */
+  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> recommendNcsCodeUsingAssistant(Profile profile) {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
@@ -223,7 +232,7 @@ public class OpenAiService {
                 return Mono.just(Collections.emptySet());
               }
               // 2단계: 추천된 NCS 코드 검증
-              return validateNcsCodesWithAi(profile, recommendedCodes)
+              return validateNcsCodesWithAssistant(profile, recommendedCodes)
                       .map(validatedCodes -> {
                         log.info("Original recommendations: {}, Validated recommendations: {}",
                                 recommendedCodes, validatedCodes);
@@ -232,6 +241,7 @@ public class OpenAiService {
             });
   }
 
+  @Cacheable(value = OpenAiCacheConfig.KEYWORD_GENERATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> generateKeyword(Profile profile) {
     ProfileResponse dto = ProfileResponse.from(profile);
     String userJson;
@@ -277,7 +287,7 @@ public class OpenAiService {
    * AI가 추천한 NCS 코드들이 사용자의 프로필에 적합한지 검증합니다.
    * (검증 기준을 명확히 하여 AI의 오판을 줄이도록 프롬프트를 수정했습니다.)
    */
-  private Mono<Set<String>> validateNcsCodesWithAi(Profile profile, Set<String> recommendedCodes) {
+  private Mono<Set<String>> validateNcsCodesWithAssistant(Profile profile, Set<String> recommendedCodes) {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
@@ -324,7 +334,7 @@ public class OpenAiService {
                 List<String> codes = objectMapper.readValue(validationResponse.trim(), new TypeReference<>() {});
                 if (codes.contains("REGENERATE")) {
                   log.info("All recommended NCS codes were inappropriate, generating new recommendations.");
-                  return generateNewNcsCodesWithAi(profile, recommendedCodes);
+                  return generateNewNcsCodesWithAssistant(profile, recommendedCodes);
                 }
 
                 Set<String> validatedCodes = new HashSet<>(codes);
@@ -332,12 +342,12 @@ public class OpenAiService {
 
                 if (validatedCodes.isEmpty() && !recommendedCodes.isEmpty()) {
                   log.warn("AI validation returned empty result for non-empty input, generating new recommendations.");
-                  return generateNewNcsCodesWithAi(profile, recommendedCodes);
+                  return generateNewNcsCodesWithAssistant(profile, recommendedCodes);
                 }
                 return Mono.just(validatedCodes);
               } catch (JsonProcessingException e) {
                 log.error("Failed to parse validation response: {}. Generating new recommendations.", validationResponse, e);
-                return generateNewNcsCodesWithAi(profile, recommendedCodes);
+                return generateNewNcsCodesWithAssistant(profile, recommendedCodes);
               }
             });
   }
@@ -346,7 +356,7 @@ public class OpenAiService {
    * 기존 추천이 부적절할 때 새로운 NCS 코드를 생성합니다.
    * (실패 원인을 명시하고, 핵심 증거에 집중하도록 프롬프트를 수정했습니다.)
    */
-  private Mono<Set<String>> generateNewNcsCodesWithAi(Profile profile, Set<String> rejectedCodes) {
+  private Mono<Set<String>> generateNewNcsCodesWithAssistant(Profile profile, Set<String> rejectedCodes) {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
