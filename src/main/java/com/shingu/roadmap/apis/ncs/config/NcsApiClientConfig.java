@@ -37,9 +37,10 @@ public class NcsApiClientConfig {
       SSLContext sslContext = SSLContext.getInstance("TLS");
       sslContext.init(null, trustAllCerts, new SecureRandom());
 
-      // HttpClient 생성
+      // HttpClient 생성 (성능 최적화 설정 추가)
       HttpClient httpClient = HttpClient.newBuilder()
               .sslContext(sslContext)
+              .connectTimeout(java.time.Duration.ofSeconds(10))
               .build();
 
       // RestClient 생성

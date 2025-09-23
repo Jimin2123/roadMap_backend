@@ -141,7 +141,10 @@ public class OpenAiClient {
                 secureLogger.logApiError(sessionKey, operation, "RUN_FAILED", "Status: " + status);
                 return Mono.error(new IllegalStateException("Assistant run 실패. Status: " + status));
               } else {
-                return Mono.delay(Duration.ofSeconds(1)).then(waitForCompletion(threadId, runId, sessionKey, operation));
+                // 상태에 따른 적응형 딜레이: 처리 중일 때는 더 짧은 간격으로 체크
+                Duration delay = "in_progress".equals(status) ?
+                    Duration.ofMillis(500) : Duration.ofSeconds(1);
+                return Mono.delay(delay).then(waitForCompletion(threadId, runId, sessionKey, operation));
               }
             })
             .onErrorMap(throwable -> {
