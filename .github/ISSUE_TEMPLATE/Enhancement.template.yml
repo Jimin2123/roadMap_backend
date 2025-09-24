@@ -1,0 +1,43 @@
+name: '🚀 Enhancement'
+description: '기존 기능에 대한 개선을 제안합니다.'
+title: '[Enhancement] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **기능 개선 아이디어를 제안해주셔서 감사합니다!** 아래 양식에 맞춰 작성해주시면 더 빠르게 검토할 수 있습니다.
+  - type: textarea
+    id: motivation
+    attributes:
+      label: '🤔 제안 배경'
+      description: '이 기능 개선이 왜 필요한가요? 어떤 점을 개선할 수 있나요?'
+      placeholder: '예: 현재 OOO 기능은 OOO 로직 때문에 비효율적입니다.これを改善すれば...'
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: '💡 제안 내용'
+      description: '개선하려는 기능에 대해 구체적으로 설명해주세요.'
+      placeholder: '어떻게 개선하면 좋을지, 어떤 효과를 기대할 수 있는지 상세하게 작성해주세요.'
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: '대안'
+      description: '혹시 고려해본 다른 대안이 있나요?'
+      placeholder: '예: OOO 라이브러리를 사용하는 방법도 고려해보았으나...'
+  - type: checkboxes
+    id: tasks
+    attributes:
+      label: '✅ 예상 작업 목록'
+      description: '이 개선 작업을 위해 어떤 작업들이 필요할까요?'
+      options:
+        - label: API 변경
+        - label: DB 스키마 변경
+        - label: 백엔드 로직 개선
+        - label: 프론트엔드 UI 개선
+        - label: 테스트 코드 수정
+        - label: 문서 업데이트
