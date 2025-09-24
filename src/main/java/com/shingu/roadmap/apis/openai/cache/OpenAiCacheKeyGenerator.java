@@ -41,6 +41,11 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
     private final Map<String, String> hashCache = new ConcurrentHashMap<>();
 
     // 캐시 키 버전 관리
+    // 주의: CACHE_VERSION 변경 시 기존 캐시 데이터와 호환성 문제가 발생할 수 있습니다.
+    // 버전 변경 시 수행해야 할 작업:
+    // 1. Redis 캐시 전체 또는 openai:* 패턴 캐시 무효화 (FLUSHDB 또는 패턴 삭제)
+    // 2. 애플리케이션 재시작
+    // 3. 캐시 워밍업 모니터링
     private static final String CACHE_VERSION = "v1.2";
 
     // 캐시 키 최대 길이 (Redis 권장사항)
@@ -78,7 +83,13 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
             return generateSafeDefaultKey(target, method, params);
         }
 
-        return generateDefaultKey(target, method, params);
+        // generateDefaultKey도 예외 처리가 필요할 수 있음
+        try {
+            return generateDefaultKey(target, method, params);
+        } catch (Exception e) {
+            log.error("기본 캐시 키 생성도 실패, 비상 키 사용. Method: {}, Error: {}", methodName, e.getMessage());
+            return generateSafeDefaultKey(target, method, params);
+        }
     }
 
     /**
@@ -414,10 +425,21 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
             }
 
             try {
-                // 이력서의 핵심 내용만으로 시그니처 생성
-                return String.valueOf(resume.hashCode());
+                // 이력서의 내용을 기반으로 일관성 있는 시그니처 생성
+                // hashCode()는 JVM에 따라 달라질 수 있으므로 SHA-256 해시 사용
+                String resumeContent = resume.toString();
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(resumeContent.getBytes(StandardCharsets.UTF_8));
+
+                // 해시를 16진수로 변환하여 반환 (처음 12자리만 사용)
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < Math.min(6, hash.length); i++) {
+                    sb.append(String.format("%02x", hash[i]));
+                }
+                return sb.toString();
             } catch (Exception e) {
-                return "error";
+                // 예외 발생 시 현재 시간을 기반으로 한 대체 시그니처 생성
+                return "fallback_" + String.valueOf(System.currentTimeMillis()).substring(8);
             }
         }
     }

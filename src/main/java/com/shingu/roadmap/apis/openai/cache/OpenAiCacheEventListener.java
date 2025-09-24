@@ -1,11 +1,14 @@
 package com.shingu.roadmap.apis.openai.cache;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shingu.roadmap.apis.openai.logging.SecureLogger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -25,6 +28,7 @@ public class OpenAiCacheEventListener {
 
     private final SecureLogger secureLogger;
     private final OpenAiCacheMetrics cacheMetrics;
+    private final ObjectMapper objectMapper;
 
     // 성능 모니터링을 위한 카운터
     private final AtomicLong consecutiveMisses = new AtomicLong(0);
@@ -192,15 +196,39 @@ public class OpenAiCacheEventListener {
 
     /**
      * 데이터 크기 추정
+     * 직렬화된 크기를 기반으로 더 정확한 크기 계산
      */
     private int estimateDataSize(Object value) {
         if (value == null) {
             return 0;
         }
 
-        // 간단한 크기 추정 (실제 직렬화 크기와는 다를 수 있음)
-        String str = value.toString();
-        return str.getBytes().length;
+        try {
+            // JSON 직렬화를 이용한 더 정확한 크기 추정
+            String json = objectMapper.writeValueAsString(value);
+            return json.getBytes().length;
+        } catch (Exception e) {
+            try {
+                // JSON 직렬화 실패 시 Java 직렬화를 시도
+                return estimateSerializedSize(value);
+            } catch (Exception ex) {
+                // 직렬화도 실패하면 toString() 기반 추정 사용
+                log.warn("데이터 크기 추정 실패, toString() 기반 추정 사용: {}", ex.getMessage());
+                return value.toString().getBytes().length;
+            }
+        }
+    }
+
+    /**
+     * Java 직렬화를 이용한 크기 추정
+     */
+    private int estimateSerializedSize(Object value) throws Exception {
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+             ObjectOutputStream oos = new ObjectOutputStream(baos)) {
+            oos.writeObject(value);
+            oos.flush();
+            return baos.size();
+        }
     }
 
     /**
