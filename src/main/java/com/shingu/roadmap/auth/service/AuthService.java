@@ -97,65 +97,46 @@ public class AuthService {
    */
   @Transactional
   public LoginResponse refreshToken(String refreshToken) {
-    // 1) 비관적 락으로 토큰 조회 및 존재 확인 (Race Condition 방지)
-    RefreshToken tokenEntity = refreshTokenRepository.findByTokenForUpdate(refreshToken)
+    // 1) 토큰으로 멤버를 찾아 잠급니다. (동시성 제어)
+    Member member = memberRepository.findAndLockByRefreshToken_Token(refreshToken)
             .orElseThrow(() -> new InvalidRefreshTokenException("존재하지 않는 또는 이미 사용된 Refresh Token입니다."));
 
-    // 2) 만료 확인 및 즉시 삭제 (One-Time-Use)
-    if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
-      refreshTokenRepository.delete(tokenEntity);
+    RefreshToken tokenEntity = member.getRefreshToken();
+
+    // 2) 토큰 유효성 검증 (만료, null 체크)
+    if (tokenEntity == null || tokenEntity.getExpiresAt().isBefore(Instant.now())) {
+      // 만료되었거나 유효하지 않은 토큰은 즉시 연관관계를 끊고 예외 발생
+      member.updateRefreshToken(null);
       throw new ExpiredRefreshTokenException();
     }
 
-    // 3) 토큰 사용 전 즉시 삭제 (One-Time-Use 보장)
-    int deletedCount = refreshTokenRepository.deleteByTokenImmediate(refreshToken);
-    if (deletedCount == 0) {
-      throw new InvalidRefreshTokenException("이미 사용된 Refresh Token입니다.");
-    }
-
-    // 4) JWT 무결성 및 유형(refresh) 검증
+    // 3) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
       throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
     }
 
-    Claims claims;
-    try {
-      claims = jwtUtil.parseClaims("refresh", refreshToken);
-    } catch (Exception e) {
-      throw new TokenIntegrityException("토큰 파싱 실패", e);
-    }
+    // 4) 기존 토큰과의 연관관계를 끊습니다. (orphanRemoval=true에 의해 삭제 처리됨)
+    member.updateRefreshToken(null);
 
-    String email = claims.get("email", String.class);
-
-    // 5) 사용자 로드
-    UserDetails userDetails;
-    try {
-      userDetails = userDetailsService.loadUserByUsername(email);
-    } catch (Exception e) {
-      throw new UserNotFoundException(email);
-    }
-
-    Member member = ((CustomUserDetails) userDetails).getMember();
-
+    // 5) 새로운 토큰 발급
     TokenPayload payload = new TokenPayload(
             member.getId(),
-            email,
+            member.getEmail(),
             member.getName(),
             member.getRole()
     );
-
-    // 6) Access 토큰 및 새로운 Refresh 토큰 재발급
     String newAccessToken = jwtUtil.generateAccessToken(payload);
     String newRefreshToken = jwtUtil.generateRefreshToken(payload);
 
-    // 7) 새로운 RefreshToken 저장
+    // 6) 새로운 RefreshToken 엔티티 생성 및 저장
     RefreshToken newTokenEntity = RefreshToken.builder()
             .token(newRefreshToken)
             .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
             .build();
 
-    // Member와 새로운 RefreshToken 연결
+    // 7) Member와 새로운 RefreshToken 연결
     member.updateRefreshToken(newTokenEntity);
+    // 트랜잭션 종료 시 변경 감지에 의해 Member의 refreshToken 참조가 업데이트됨
 
     return new LoginResponse(newAccessToken, newRefreshToken);
   }

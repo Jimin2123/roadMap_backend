@@ -6,6 +6,9 @@ import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import org.springframework.data.jpa.repository.Lock;
+
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
@@ -16,4 +19,8 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
   Optional<Member> findById(Long id);
 
   Optional<Member> findByRefreshToken_Token(String token);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT m FROM Member m WHERE m.refreshToken.token = :token")
+  Optional<Member> findAndLockByRefreshToken_Token(@Param("token") String token);
 }
