@@ -77,12 +77,12 @@ public class AuthService {
     String accessToken = jwtUtil.generateAccessToken(payload);
     String refreshToken = jwtUtil.generateRefreshToken(payload);
 
-    // 6) RefreshToken 저장 (연관 없음 → 단독 저장)
+    // 6) RefreshToken 저장 (Member와 연관 설정)
     RefreshToken tokenEntity = RefreshToken.builder()
             .token(refreshToken)
             .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
             .build();
-    refreshTokenRepository.save(tokenEntity);
+    member.updateRefreshToken(tokenEntity);
 
     return new LoginResponse(accessToken, refreshToken);
   }
