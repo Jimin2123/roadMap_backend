@@ -20,7 +20,7 @@ import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.resume.domain.*;
-import jakarta.persistence.EntityNotFoundException;
+import com.shingu.roadmap.member.exception.*;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -53,6 +53,11 @@ public class MemberService {
     /* ====================================================================== */
 
     public MemberResponse signUp(MemberRequest request) {
+        // 이메일 중복 체크
+        if (memberRepository.findByAccountEmail(request.loginRequest().email()).isPresent()) {
+            throw new DuplicateMemberException(request.loginRequest().email());
+        }
+
         Member member = assembleMember(request);
         memberRepository.save(member);
         return MemberResponse.from(member);
@@ -95,13 +100,13 @@ public class MemberService {
 
     public ProfileResponse getProfile(Long memberId) {
         Profile profile = findMember(memberId).getProfile();
-        if (profile == null) throw new EntityNotFoundException("프로필이 존재하지 않습니다. id=" + memberId);
+        if (profile == null) throw new ProfileNotFoundException(memberId);
         return ProfileResponse.from(profile);
     }
 
     public Member findMemberById(Long memberId) {
         return memberRepository.findById(memberId)
-                .orElseThrow(() -> new EntityNotFoundException("존재하지 않는 회원입니다."));
+                .orElseThrow(() -> new MemberNotFoundException(memberId));
     }
 
     /* ====================================================================== */
@@ -273,7 +278,7 @@ public class MemberService {
 
     private ProfileCertificate profileCertificateOf(Profile profile, String certName, String year) {
         Certificate cert = certificateRepository.findByJmfldnm(certName)
-                .orElseThrow(() -> new IllegalArgumentException("자격증을 찾을 수 없습니다: " + certName));
+                .orElseThrow(() -> new CertificateNotFoundException(certName));
         return ProfileCertificate.of(profile, cert, year);
     }
 
@@ -282,7 +287,7 @@ public class MemberService {
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()
                 .map(code -> saraminJobRepository.findById(code)
-                        .orElseThrow(() -> new IllegalArgumentException("직무 코드가 존재하지 않습니다: " + code)))
+                        .orElseThrow(() -> new JobCodeNotFoundException(String.valueOf(code))))
                 .collect(Collectors.toSet());
         profile.getDesiredJobs().addAll(jobs);
     }
@@ -332,6 +337,6 @@ public class MemberService {
 
     private Member findMember(Long id) {
         return memberRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("회원이 존재하지 않습니다. id=" + id));
+                .orElseThrow(() -> new MemberNotFoundException(id));
     }
 }

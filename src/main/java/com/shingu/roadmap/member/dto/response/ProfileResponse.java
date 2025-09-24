@@ -6,7 +6,6 @@ import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.persistence.Column;
 
 import java.util.Set;
 import java.util.stream.Collectors;
