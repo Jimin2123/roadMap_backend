@@ -12,6 +12,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * 이벤트를 발행하는 CacheManager 래퍼
@@ -178,6 +180,32 @@ public class EventPublishingCacheManager implements CacheManager {
             } catch (Exception e) {
                 log.debug("캐시 Clear 이벤트 발행 실패: {}", e.getMessage());
             }
+        }
+
+        @Override
+        public CompletableFuture<Cache.ValueWrapper> retrieve(Object key) {
+            // Explicitly cast to resolve generic type mismatch
+            CompletableFuture<ValueWrapper> future = Objects.requireNonNull(delegateCache.retrieve(key))
+                    .thenApply(result -> (ValueWrapper) result);
+
+            future.whenComplete((valueWrapper, throwable) -> {
+                try {
+                    if (throwable != null) {
+                        log.debug("캐시 retrieve 실패: {}", throwable.getMessage());
+                        return;
+                    }
+
+                    if (valueWrapper != null) {
+                        eventPublisher.publishEvent(new CacheHitEvent(this, cacheName, key, extractOperationFromStack()));
+                    } else {
+                        eventPublisher.publishEvent(new CacheMissEvent(this, cacheName, key, extractOperationFromStack()));
+                    }
+                } catch (Exception e) {
+                    log.debug("캐시 retrieve 이벤트 발행 실패: {}", e.getMessage());
+                }
+            });
+
+            return future;
         }
 
         /**
