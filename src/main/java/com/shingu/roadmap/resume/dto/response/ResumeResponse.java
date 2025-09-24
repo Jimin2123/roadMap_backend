@@ -9,7 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 
 public record ResumeResponse(
-        String introduction,
+        IntroductionResponse introduction,
         EducationResponse education,
         List<ActivityResponse> activities,
         List<ProjectResponse> projects
@@ -38,7 +38,7 @@ public record ResumeResponse(
             .toList();
 
     return new ResumeResponse(
-            resume.getIntroduction() != null ? resume.getIntroduction().getContent() : null,
+            IntroductionResponse.from(resume.getIntroduction()),
             EducationResponse.from(resume.getEducation()),
             activityDtos,
             projectDtos

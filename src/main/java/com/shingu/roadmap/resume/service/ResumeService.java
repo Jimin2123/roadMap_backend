@@ -9,7 +9,7 @@ import com.shingu.roadmap.member.service.MemberService;
 import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.resume.dto.request.*;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
-import jakarta.persistence.EntityNotFoundException;
+import com.shingu.roadmap.resume.exception.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +30,7 @@ public class ResumeService {
   @Transactional
   public MemberResponse createResume(Long memberId, ProfileRequest request) {
     if (request == null || request.resume() == null) {
-      throw new IllegalArgumentException("ResumeRequest가 없습니다.");
+      throw new InvalidResumeRequestException(ResumeErrorCode.RESUME_002.getMessage());
     }
     ResumeRequest resumeReq = request.resume();
 
@@ -62,18 +62,22 @@ public class ResumeService {
     }
 
     // 4) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
-    return memberService.updateProfile(memberId, request, resume);
+    try {
+      return memberService.updateProfile(memberId, request, resume);
+    } catch (Exception e) {
+      throw new ResumeCreationException(ResumeErrorCode.RESUME_003.getMessage(), e);
+    }
   }
 
   @Transactional
   public MemberResponse updateResume(Long memberId, ProfileRequest request) {
     if (request == null || request.resume() == null) {
-      throw new IllegalArgumentException("ResumeRequest가 없습니다.");
+      throw new InvalidResumeRequestException(ResumeErrorCode.RESUME_002.getMessage());
     }
 
     Member member = memberService.findMemberById(memberId);
     if (member.getProfile() == null) {
-      throw new EntityNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
+      throw new ResumeNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
     }
 
     Resume existingResume = member.getProfile().getResume();
@@ -114,7 +118,11 @@ public class ResumeService {
     }
 
     // MemberService로 위임하여 Profile 업데이트
-    return memberService.updateProfile(memberId, request, resume);
+    try {
+      return memberService.updateProfile(memberId, request, resume);
+    } catch (Exception e) {
+      throw new ResumeUpdateException(ResumeErrorCode.RESUME_004.getMessage(), e);
+    }
   }
 
   /* ============================ Queries ============================ */
@@ -123,11 +131,11 @@ public class ResumeService {
   public ResumeResponse getResume(Long memberId) {
     Member member = memberService.findMemberById(memberId);
     if (member.getProfile() == null) {
-      throw new EntityNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
+      throw new ResumeNotFoundException("해당 회원의 프로필이 존재하지 않습니다.");
     }
     Resume resume = member.getProfile().getResume();
     if (resume == null) {
-      throw new EntityNotFoundException("해당 회원의 이력서 정보를 찾을 수 없습니다.");
+      throw new ResumeNotFoundException(ResumeErrorCode.RESUME_001.getMessage());
     }
     return ResumeResponse.from(resume);
   }
@@ -209,6 +217,10 @@ public class ResumeService {
 
   private Period toPeriod(PeriodRequest dto) {
     if (dto == null) return null;
-    return Period.of(dto.startDate(), dto.endDate()); // 유효성 내장
+    try {
+      return Period.of(dto.startDate(), dto.endDate()); // 유효성 내장
+    } catch (Exception e) {
+      throw new InvalidPeriodException(ResumeErrorCode.RESUME_009.getMessage(), e);
+    }
   }
 }

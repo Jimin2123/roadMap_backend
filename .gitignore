@@ -53,3 +53,9 @@ docker/redis/log
 # MariadDB
 docker/mariadb/data
 docker/mariadb/log
+
+# Other
+docs/*
+CLAUDE.md
+GEMINI.md
+.claude
