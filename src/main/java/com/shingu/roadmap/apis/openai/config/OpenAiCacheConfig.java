@@ -1,9 +1,12 @@
 package com.shingu.roadmap.apis.openai.config;
 
+import com.shingu.roadmap.apis.openai.cache.EventPublishingCacheManager;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -36,13 +39,16 @@ public class OpenAiCacheConfig {
     public static final String KEYWORD_GENERATION_CACHE = "openai:keyword-generation";
     public static final String ASSISTANT_THREAD_CACHE = "openai:assistant-thread";
 
-    @Bean
-    public CacheManager openAiCacheManager(RedisConnectionFactory redisConnectionFactory) {
+    @Bean("redisCacheManager")
+    public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
         RedisCacheConfiguration defaultCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()))
                 .disableCachingNullValues()
                 .entryTtl(Duration.ofHours(1)) // 기본 TTL: 1시간
+                // 캐시 키 구조: roadmap:openai:CACHE_NAME::KEY
+                // prefixCacheNameWith: 캐시 이름에 "openai:" 접두사 추가 (openai:training-recommendation)
+                // computePrefixWith: 실제 Redis 키에 "roadmap:" 접두사 추가 (roadmap:openai:training-recommendation::key)
                 .prefixCacheNameWith("openai:") // 캐시 이름 프리픽스로 네임스페이스 분리
                 .computePrefixWith(cacheName -> "roadmap:" + cacheName + ":"); // 키 프리픽스 설정
 
@@ -78,5 +84,17 @@ public class OpenAiCacheConfig {
                 .cacheDefaults(defaultCacheConfig)
                 .withInitialCacheConfigurations(cacheConfigurations)
                 .build();
+    }
+
+    /**
+     * 이벤트를 발행하는 기본 CacheManager
+     * OpenAI 캐시 작업을 모니터링하고 이벤트를 자동으로 발행합니다.
+     */
+    @Bean
+    @Primary
+    public CacheManager cacheManager(
+            CacheManager redisCacheManager,
+            ApplicationEventPublisher eventPublisher) {
+        return new EventPublishingCacheManager(redisCacheManager, eventPublisher);
     }
 }

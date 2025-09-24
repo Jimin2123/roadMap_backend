@@ -19,6 +19,9 @@ import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
 
 /**
  * OpenAI API 캐시를 위한 고성능 커스텀 키 생성기
@@ -37,10 +40,18 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
 
     private final ObjectMapper objectMapper;
 
-    // 성능 최적화를 위한 해시 캐시
-    private final Map<String, String> hashCache = new ConcurrentHashMap<>();
+    // 성능 최적화를 위한 해시 캐시 (메모리 누수 방지를 위해 Caffeine 사용)
+    private final Cache<String, String> hashCache = Caffeine.newBuilder()
+            .maximumSize(1000)  // 최대 1000개 항목
+            .expireAfterAccess(Duration.ofHours(2))  // 2시간 미접근시 만료
+            .build();
 
     // 캐시 키 버전 관리
+    // 주의: CACHE_VERSION 변경 시 기존 캐시 데이터와 호환성 문제가 발생할 수 있습니다.
+    // 버전 변경 시 수행해야 할 작업:
+    // 1. Redis 캐시 전체 또는 openai:* 패턴 캐시 무효화 (FLUSHDB 또는 패턴 삭제)
+    // 2. 애플리케이션 재시작
+    // 3. 캐시 워밍업 모니터링
     private static final String CACHE_VERSION = "v1.2";
 
     // 캐시 키 최대 길이 (Redis 권장사항)
@@ -78,7 +89,13 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
             return generateSafeDefaultKey(target, method, params);
         }
 
-        return generateDefaultKey(target, method, params);
+        // generateDefaultKey도 예외 처리가 필요할 수 있음
+        try {
+            return generateDefaultKey(target, method, params);
+        } catch (Exception e) {
+            log.error("기본 캐시 키 생성도 실패, 비상 키 사용. Method: {}, Error: {}", methodName, e.getMessage());
+            return generateSafeDefaultKey(target, method, params);
+        }
     }
 
     /**
@@ -277,7 +294,7 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
 
         // 성능 최적화: 짧은 문자열은 캐시에서 조회
         if (input.length() < 100) {
-            return hashCache.computeIfAbsent(input, this::computeHash);
+            return hashCache.get(input, this::computeHash);
         }
 
         return computeHash(input);
@@ -398,12 +415,14 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
                 );
 
             } catch (Exception e) {
-                log.warn("Profile 캐시 키 생성 중 오류, 기본값 사용. ProfileId: {}",
+                log.warn("Profile 캐시 키 생성 중 오류, 프로필 ID 기반 기본값 사용. ProfileId: {}",
                          profile.getId(), e);
+                // 프로필 ID를 포함한 고유한 키 생성으로 키 충돌 방지
+                String profileId = profile.getId() != null ? profile.getId().toString() : "anon";
                 return new ProfileCacheKey(
-                    "unknown", Collections.emptyList(), Collections.emptyList(),
+                    "unknown_" + profileId, Collections.emptyList(), Collections.emptyList(),
                     Collections.emptyList(), Collections.emptyList(),
-                    Collections.emptyList(), "error"
+                    Collections.emptyList(), "error_" + profileId
                 );
             }
         }
@@ -414,10 +433,21 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
             }
 
             try {
-                // 이력서의 핵심 내용만으로 시그니처 생성
-                return String.valueOf(resume.hashCode());
+                // 이력서의 내용을 기반으로 일관성 있는 시그니처 생성
+                // hashCode()는 JVM에 따라 달라질 수 있으므로 SHA-256 해시 사용
+                String resumeContent = resume.toString();
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(resumeContent.getBytes(StandardCharsets.UTF_8));
+
+                // 해시를 16진수로 변환하여 반환 (처음 12자리만 사용)
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < Math.min(6, hash.length); i++) {
+                    sb.append(String.format("%02x", hash[i]));
+                }
+                return sb.toString();
             } catch (Exception e) {
-                return "error";
+                // 예외 발생 시 현재 시간을 기반으로 한 대체 시그니처 생성
+                return "fallback_" + String.valueOf(System.currentTimeMillis()).substring(8);
             }
         }
     }
@@ -487,8 +517,10 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
 
             } catch (Exception e) {
                 log.warn("ProfileResponse 캐시 키 생성 중 오류, 기본값 사용", e);
+                // 시간 기반 고유성을 추가하여 키 충돌 방지
+                String timestamp = String.valueOf(System.currentTimeMillis() % 10000);
                 return new ProfileResponseCacheKey(
-                    "unknown", Collections.emptySet(), Collections.emptySet(),
+                    "unknown_" + timestamp, Collections.emptySet(), Collections.emptySet(),
                     Collections.emptySet(), Collections.emptySet()
                 );
             }

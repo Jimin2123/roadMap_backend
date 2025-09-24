@@ -73,43 +73,25 @@ public class OpenAiClient {
   }
 
   public Mono<String> generateAssistantResponse(String userInput) {
+    return generateAssistantResponse(userInput, config.getNcsCodeAssistantId());
+  }
+
+  /**
+   * 지정된 Assistant ID를 사용하여 Assistant 응답 생성
+   * @param userInput 사용자 입력
+   * @param assistantId 사용할 Assistant ID
+   * @return Assistant 응답
+   */
+  public Mono<String> generateAssistantResponse(String userInput, String assistantId) {
     String sessionKey = generateSessionKey();
     String operation = "generateAssistantResponse";
 
     secureLogger.logApiCall(sessionKey, "/threads", userInput.length());
     long startTime = System.currentTimeMillis();
 
-    return openAiWebClient.post()
-            .uri("/threads")
-            .body(BodyInserters.fromValue(Collections.emptyMap()))
-            .retrieve()
-            .onStatus(HttpStatusCode::isError, response ->
-                    response.bodyToMono(String.class).flatMap(body -> {
-                      secureLogger.logApiError(sessionKey, operation + "_create_thread", "HTTP_ERROR", body);
-                      return Mono.error(new RuntimeException("OpenAI 오류: " + body));
-                    })
-            )
-            .bodyToMono(JsonNode.class)
-            .map(json -> json.get("id").asText())
-            .flatMap(threadId -> {
-              return openAiWebClient.post()
-                      .uri("/threads/" + threadId + "/messages")
-                      .bodyValue(Map.of(
-                              "role", "user",
-                              "content", userInput
-                      ))
-                      .retrieve()
-                      .bodyToMono(JsonNode.class)
-                      .thenReturn(threadId);
-            })
-            .flatMap(threadId -> {
-              return openAiWebClient.post()
-                      .uri("/threads/" + threadId + "/runs")
-                      .bodyValue(Map.of("assistant_id", config.getNcsCodeAssistantId()))
-                      .retrieve()
-                      .bodyToMono(JsonNode.class)
-                      .map(json -> Map.entry(threadId, json.get("id").asText()));
-            })
+    return createThread(sessionKey, operation)
+            .flatMap(threadId -> addMessageToThread(threadId, userInput, sessionKey, operation))
+            .flatMap(threadId -> runAssistant(threadId, assistantId, sessionKey, operation))
             .flatMap(entry -> waitForCompletion(entry.getKey(), entry.getValue(), sessionKey, operation))
             .timeout(Duration.ofSeconds(60))
             .map(response -> {
@@ -133,18 +115,32 @@ public class OpenAiClient {
                             .retrieve()
                             .bodyToMono(JsonNode.class)
             )
+            .expand(json -> {
+              String status = json.get("status").asText();
+
+              if ("completed".equals(status) || "failed".equals(status) ||
+                  "cancelled".equals(status) || "expired".equals(status)) {
+                return Mono.empty(); // 완료 상태이므로 더 이상 폴링하지 않음
+              }
+
+              // 상태에 따른 적응형 딜레이: 처리 중일 때는 더 짧은 간격으로 체크
+              Duration delay = "in_progress".equals(status) ?
+                  Duration.ofMillis(500) : Duration.ofSeconds(1);
+
+              return Mono.delay(delay)
+                      .then(openAiWebClient.get()
+                              .uri("/threads/" + threadId + "/runs/" + runId)
+                              .retrieve()
+                              .bodyToMono(JsonNode.class));
+            })
+            .last() // 마지막 상태만 취함
             .flatMap(json -> {
               String status = json.get("status").asText();
               if ("completed".equals(status)) {
                 return getMessagesFromThread(threadId, sessionKey, operation);
-              } else if ("failed".equals(status) || "cancelled".equals(status) || "expired".equals(status)) {
+              } else {
                 secureLogger.logApiError(sessionKey, operation, "RUN_FAILED", "Status: " + status);
                 return Mono.error(new IllegalStateException("Assistant run 실패. Status: " + status));
-              } else {
-                // 상태에 따른 적응형 딜레이: 처리 중일 때는 더 짧은 간격으로 체크
-                Duration delay = "in_progress".equals(status) ?
-                    Duration.ofMillis(500) : Duration.ofSeconds(1);
-                return Mono.delay(delay).then(waitForCompletion(threadId, runId, sessionKey, operation));
               }
             })
             .onErrorMap(throwable -> {
@@ -180,6 +176,63 @@ public class OpenAiClient {
                   sessionKey, operation + "_get_messages", throwable));
               return exception;
             });
+  }
+
+  /**
+   * 새로운 스레드 생성
+   */
+  private Mono<String> createThread(String sessionKey, String operation) {
+    return openAiWebClient.post()
+            .uri("/threads")
+            .body(BodyInserters.fromValue(Collections.emptyMap()))
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response ->
+                    response.bodyToMono(String.class).flatMap(body -> {
+                      secureLogger.logApiError(sessionKey, operation + "_create_thread", "HTTP_ERROR", body);
+                      return Mono.error(new RuntimeException("OpenAI 스레드 생성 오류: " + body));
+                    })
+            )
+            .bodyToMono(JsonNode.class)
+            .map(json -> json.get("id").asText());
+  }
+
+  /**
+   * 스레드에 메시지 추가
+   */
+  private Mono<String> addMessageToThread(String threadId, String userInput, String sessionKey, String operation) {
+    return openAiWebClient.post()
+            .uri("/threads/" + threadId + "/messages")
+            .bodyValue(Map.of(
+                    "role", "user",
+                    "content", userInput
+            ))
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response ->
+                    response.bodyToMono(String.class).flatMap(body -> {
+                      secureLogger.logApiError(sessionKey, operation + "_add_message", "HTTP_ERROR", body);
+                      return Mono.error(new RuntimeException("OpenAI 메시지 추가 오류: " + body));
+                    })
+            )
+            .bodyToMono(JsonNode.class)
+            .thenReturn(threadId);
+  }
+
+  /**
+   * Assistant 실행
+   */
+  private Mono<Map.Entry<String, String>> runAssistant(String threadId, String assistantId, String sessionKey, String operation) {
+    return openAiWebClient.post()
+            .uri("/threads/" + threadId + "/runs")
+            .bodyValue(Map.of("assistant_id", assistantId))
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response ->
+                    response.bodyToMono(String.class).flatMap(body -> {
+                      secureLogger.logApiError(sessionKey, operation + "_run_assistant", "HTTP_ERROR", body);
+                      return Mono.error(new RuntimeException("OpenAI Assistant 실행 오류: " + body));
+                    })
+            )
+            .bodyToMono(JsonNode.class)
+            .map(json -> Map.entry(threadId, json.get("id").asText()));
   }
 
   private String generateSessionKey() {

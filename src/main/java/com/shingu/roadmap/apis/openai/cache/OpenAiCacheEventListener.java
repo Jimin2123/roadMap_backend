@@ -1,5 +1,10 @@
 package com.shingu.roadmap.apis.openai.cache;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shingu.roadmap.apis.openai.cache.event.CacheHitEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CacheMissEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CachePutEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CacheEvictEvent;
 import com.shingu.roadmap.apis.openai.logging.SecureLogger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +30,7 @@ public class OpenAiCacheEventListener {
 
     private final SecureLogger secureLogger;
     private final OpenAiCacheMetrics cacheMetrics;
+    private final ObjectMapper objectMapper;
 
     // 성능 모니터링을 위한 카운터
     private final AtomicLong consecutiveMisses = new AtomicLong(0);
@@ -35,9 +41,13 @@ public class OpenAiCacheEventListener {
     private static final long LARGE_DATA_SIZE_THRESHOLD = 50000; // 50KB
 
     /**
-     * 캐시 히트 이벤트 처리
+     * 캐시 히트 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheHit(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheHitEvent(CacheHitEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -61,9 +71,13 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 미스 이벤트 처리
+     * 캐시 미스 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheMiss(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheMissEvent(CacheMissEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -92,9 +106,14 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 저장 이벤트 처리
+     * 캐시 저장 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCachePut(String cacheName, Object key, Object value, String operation) {
+    @EventListener
+    public void handleCachePutEvent(CachePutEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        Object value = event.getValue();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -118,9 +137,13 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 제거 이벤트 처리
+     * 캐시 제거 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheEvict(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheEvictEvent(CacheEvictEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -151,6 +174,7 @@ public class OpenAiCacheEventListener {
 
     /**
      * 캐시 키에서 작업 타입 추출
+     * 버전 정보를 활용한 더 안정적인 operation 추출
      */
     private String extractOperationFromKey(Object key) {
         if (key == null) {
@@ -158,16 +182,33 @@ public class OpenAiCacheEventListener {
         }
 
         String keyStr = key.toString();
-        if (keyStr.contains("training:")) {
+
+        // 버전 정보 다음의 메서드명을 직접 추출하여 더 안정적으로 처리
+        try {
+            // 형식: v1.2:methodName:... 에서 methodName 추출
+            String[] parts = keyStr.split(":", 3);
+            if (parts.length >= 2) {
+                String methodName = parts[1];
+                // 메서드명이 비어있지 않다면 직접 반환
+                if (!methodName.isEmpty() && !methodName.equals("safe") && !methodName.equals("emergency")) {
+                    return methodName;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("메서드명 직접 추출 실패, fallback 방식 사용: {}", e.getMessage());
+        }
+
+        // Fallback: 기존 문자열 매칭 방식 (안전장치)
+        if (keyStr.contains("recommendTrainingCourse")) {
             return "recommendTrainingCourse";
-        } else if (keyStr.contains("ncs-code:")) {
-            return "recommendNcsCode";
-        } else if (keyStr.contains("search-codes:")) {
+        } else if (keyStr.contains("recommendNcsCodeUsingAssistant")) {
+            return "recommendNcsCodeUsingAssistant";
+        } else if (keyStr.contains("recommendSearchCodes")) {
             return "recommendSearchCodes";
-        } else if (keyStr.contains("keywords:")) {
+        } else if (keyStr.contains("generateKeyword")) {
             return "generateKeyword";
-        } else if (keyStr.contains("desired-job:")) {
-            return "recommendDesiredJobCode";
+        } else if (keyStr.contains("recommendDesiredJobCodeUsingAssistant")) {
+            return "recommendDesiredJobCodeUsingAssistant";
         }
 
         return "unknown";
@@ -191,17 +232,24 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 데이터 크기 추정
+     * 데이터 크기 추정 (성능 최적화를 위해 JSON 직렬화만 사용)
      */
     private int estimateDataSize(Object value) {
         if (value == null) {
             return 0;
         }
 
-        // 간단한 크기 추정 (실제 직렬화 크기와는 다를 수 있음)
-        String str = value.toString();
-        return str.getBytes().length;
+        try {
+            // JSON 직렬화를 이용한 크기 추정 (가장 일관성 있고 성능이 좋음)
+            String json = objectMapper.writeValueAsString(value);
+            return json.getBytes().length;
+        } catch (Exception e) {
+            // JSON 직렬화 실패 시 toString() 기반 추정 사용 (Java 직렬화 제거로 성능 향상)
+            log.debug("JSON 크기 추정 실패, toString() 기반 추정 사용: {}", e.getMessage());
+            return value.toString().getBytes().length;
+        }
     }
+
 
     /**
      * 성능 리포트 (주기적으로 호출)
