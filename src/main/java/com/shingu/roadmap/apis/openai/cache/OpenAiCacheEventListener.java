@@ -1,14 +1,16 @@
 package com.shingu.roadmap.apis.openai.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shingu.roadmap.apis.openai.cache.event.CacheHitEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CacheMissEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CachePutEvent;
+import com.shingu.roadmap.apis.openai.cache.event.CacheEvictEvent;
 import com.shingu.roadmap.apis.openai.logging.SecureLogger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectOutputStream;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -39,9 +41,13 @@ public class OpenAiCacheEventListener {
     private static final long LARGE_DATA_SIZE_THRESHOLD = 50000; // 50KB
 
     /**
-     * 캐시 히트 이벤트 처리
+     * 캐시 히트 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheHit(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheHitEvent(CacheHitEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -65,9 +71,13 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 미스 이벤트 처리
+     * 캐시 미스 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheMiss(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheMissEvent(CacheMissEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -96,9 +106,14 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 저장 이벤트 처리
+     * 캐시 저장 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCachePut(String cacheName, Object key, Object value, String operation) {
+    @EventListener
+    public void handleCachePutEvent(CachePutEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        Object value = event.getValue();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
@@ -122,9 +137,13 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 캐시 제거 이벤트 처리
+     * 캐시 제거 이벤트 처리 - Spring ApplicationEvent 방식
      */
-    public void logCacheEvict(String cacheName, Object key, String operation) {
+    @EventListener
+    public void handleCacheEvictEvent(CacheEvictEvent event) {
+        String cacheName = event.getCacheName();
+        Object key = event.getCacheKey();
+        String operation = event.getOperation();
         if (isOpenAiCache(cacheName)) {
             try {
                 String sessionKey = generateSessionKey();
