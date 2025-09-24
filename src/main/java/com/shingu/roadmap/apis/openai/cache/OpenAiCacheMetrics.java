@@ -95,6 +95,10 @@ public class OpenAiCacheMetrics {
     /**
      * 개별 캐시별 통계 로깅
      * CacheManager를 통해 동적으로 openai: 접두사를 가진 캐시들을 조회하여 처리
+     *
+     * 주의: 이 메서드는 실제 캐시 히트/미스 통계가 아닌 캐시의 존재 여부만을 확인합니다.
+     * Spring Boot의 기본 CacheManager와 Redis 연동 방식의 한계로 인해
+     * 개별 캐시의 상세한 통계 정보를 직접 조회할 수 없습니다.
      */
     private void logIndividualCacheStats() {
         // 동적으로 openai: 접두사를 가진 캐시 이름들을 수집

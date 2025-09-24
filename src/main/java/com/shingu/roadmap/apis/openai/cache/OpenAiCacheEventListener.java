@@ -155,6 +155,7 @@ public class OpenAiCacheEventListener {
 
     /**
      * 캐시 키에서 작업 타입 추출
+     * 버전 정보를 활용한 더 안정적인 operation 추출
      */
     private String extractOperationFromKey(Object key) {
         if (key == null) {
@@ -162,16 +163,33 @@ public class OpenAiCacheEventListener {
         }
 
         String keyStr = key.toString();
-        if (keyStr.contains("training:")) {
+
+        // 버전 정보 다음의 메서드명을 직접 추출하여 더 안정적으로 처리
+        try {
+            // 형식: v1.2:methodName:... 에서 methodName 추출
+            String[] parts = keyStr.split(":", 3);
+            if (parts.length >= 2) {
+                String methodName = parts[1];
+                // 메서드명이 비어있지 않다면 직접 반환
+                if (!methodName.isEmpty() && !methodName.equals("safe") && !methodName.equals("emergency")) {
+                    return methodName;
+                }
+            }
+        } catch (Exception e) {
+            log.debug("메서드명 직접 추출 실패, fallback 방식 사용: {}", e.getMessage());
+        }
+
+        // Fallback: 기존 문자열 매칭 방식 (안전장치)
+        if (keyStr.contains("recommendTrainingCourse")) {
             return "recommendTrainingCourse";
-        } else if (keyStr.contains("ncs-code:")) {
-            return "recommendNcsCode";
-        } else if (keyStr.contains("search-codes:")) {
+        } else if (keyStr.contains("recommendNcsCodeUsingAssistant")) {
+            return "recommendNcsCodeUsingAssistant";
+        } else if (keyStr.contains("recommendSearchCodes")) {
             return "recommendSearchCodes";
-        } else if (keyStr.contains("keywords:")) {
+        } else if (keyStr.contains("generateKeyword")) {
             return "generateKeyword";
-        } else if (keyStr.contains("desired-job:")) {
-            return "recommendDesiredJobCode";
+        } else if (keyStr.contains("recommendDesiredJobCodeUsingAssistant")) {
+            return "recommendDesiredJobCodeUsingAssistant";
         }
 
         return "unknown";
@@ -195,8 +213,7 @@ public class OpenAiCacheEventListener {
     }
 
     /**
-     * 데이터 크기 추정
-     * 직렬화된 크기를 기반으로 더 정확한 크기 계산
+     * 데이터 크기 추정 (성능 최적화를 위해 JSON 직렬화만 사용)
      */
     private int estimateDataSize(Object value) {
         if (value == null) {
@@ -204,32 +221,16 @@ public class OpenAiCacheEventListener {
         }
 
         try {
-            // JSON 직렬화를 이용한 더 정확한 크기 추정
+            // JSON 직렬화를 이용한 크기 추정 (가장 일관성 있고 성능이 좋음)
             String json = objectMapper.writeValueAsString(value);
             return json.getBytes().length;
         } catch (Exception e) {
-            try {
-                // JSON 직렬화 실패 시 Java 직렬화를 시도
-                return estimateSerializedSize(value);
-            } catch (Exception ex) {
-                // 직렬화도 실패하면 toString() 기반 추정 사용
-                log.warn("데이터 크기 추정 실패, toString() 기반 추정 사용: {}", ex.getMessage());
-                return value.toString().getBytes().length;
-            }
+            // JSON 직렬화 실패 시 toString() 기반 추정 사용 (Java 직렬화 제거로 성능 향상)
+            log.debug("JSON 크기 추정 실패, toString() 기반 추정 사용: {}", e.getMessage());
+            return value.toString().getBytes().length;
         }
     }
 
-    /**
-     * Java 직렬화를 이용한 크기 추정
-     */
-    private int estimateSerializedSize(Object value) throws Exception {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-            oos.writeObject(value);
-            oos.flush();
-            return baos.size();
-        }
-    }
 
     /**
      * 성능 리포트 (주기적으로 호출)
