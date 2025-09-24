@@ -43,6 +43,9 @@ public class OpenAiCacheConfig {
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()))
                 .disableCachingNullValues()
                 .entryTtl(Duration.ofHours(1)) // 기본 TTL: 1시간
+                // 캐시 키 구조: roadmap:openai:CACHE_NAME::KEY
+                // prefixCacheNameWith: 캐시 이름에 "openai:" 접두사 추가 (openai:training-recommendation)
+                // computePrefixWith: 실제 Redis 키에 "roadmap:" 접두사 추가 (roadmap:openai:training-recommendation::key)
                 .prefixCacheNameWith("openai:") // 캐시 이름 프리픽스로 네임스페이스 분리
                 .computePrefixWith(cacheName -> "roadmap:" + cacheName + ":"); // 키 프리픽스 설정
 

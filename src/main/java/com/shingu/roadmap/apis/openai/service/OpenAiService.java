@@ -12,6 +12,7 @@ import com.shingu.roadmap.apis.openai.dto.request.GptUserPromptRequest;
 import com.shingu.roadmap.apis.openai.dto.request.GptUserProfileDto;
 import com.shingu.roadmap.apis.openai.dto.request.TrainingRecommendationRequest;
 import com.shingu.roadmap.apis.openai.logging.SecureLogger;
+import com.shingu.roadmap.apis.openai.util.JsonResponseParser;
 import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
@@ -35,6 +36,7 @@ public class OpenAiService {
   private final ObjectMapper objectMapper;
   private final CareerNetCodeProvider careerNetCodeProvider;
   private final SecureLogger secureLogger;
+  private final JsonResponseParser jsonResponseParser;
 
   /**
    * 사용자 정보를 바탕으로 부족한 역량을 보완할 훈련과정을 추천합니다.
@@ -407,13 +409,11 @@ public class OpenAiService {
    */
   private Mono<Set<String>> getNcsCodesFromAssistant(String userPrompt) {
     return openAiClient.generateAssistantResponse(userPrompt)
-            .flatMap(response -> {
-              try {
-                return Mono.just(objectMapper.readValue(response.trim(), new TypeReference<Set<String>>() {}));
-              } catch (JsonProcessingException e) {
-                log.error("Failed to parse NCS codes JSON from assistant: {}", response, e);
-                return Mono.just(Collections.emptySet());
+            .map(response -> {
+              if (log.isDebugEnabled()) {
+                jsonResponseParser.logJsonExtractionProcess(response);
               }
+              return jsonResponseParser.parseStringSet(response);
             });
   }
 

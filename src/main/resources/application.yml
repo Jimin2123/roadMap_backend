@@ -10,11 +10,9 @@ spring:
       max-file-size: 10MB # 업로드 가능한 파일의 최대 크기 설정
       max-request-size: 10MB # 한 요청에서 업로드 가능한 전체 파일 용량 제한
 
+# 기본 캐시 설정
   cache:
     type: redis # Redis를 캐시 프로바이더로 사용
-    cache-names:
-      - ncsOccupation
-      - ncsTrainingStandard
     redis:
       time-to-live: 7200000 # 2시간 (밀리초)
 
@@ -25,13 +23,14 @@ logging:
   level:
     root: INFO # 전체 로그 레벨을 INFO로 설정
     org.springframework.web: DEBUG # 웹 관련 로깅은 DEBUG 레벨로 설정 (HTTP 요청/응답 등 상세 보기)
+    com.shingu.roadmap: DEBUG # 애플리케이션 패키지의 로깅 레벨을 DEBUG로 설정
 
 springdoc:
   swagger-ui:
     path: /api-docs
-    operationsSorter: alpha # API 메서드들을 알파벳 순으로 정렬
-    tagsSorter: alpha # API 태그들을 알파벳 순으로 정렬
     display-request-duration: true # 요청 응답 시간 표시 여부
+    operations-sorter: alpha # API 메서드들을 알파벳 순으로 정렬
+    tags-sorter: alpha # 태그들을 알파벳 순으로 정렬
 
 management:
   endpoints:
