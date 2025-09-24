@@ -80,14 +80,19 @@ public class EnhancedJwtAuthenticationFilter extends OncePerRequestFilter {
                     log.warn("auth success publish failed: {}", pubEx.toString());
                 }
 
-                // 정상 흐름 계속
                 filterChain.doFilter(request, response);
                 return;
             }
 
-            // 실패 처리
+            // 토큰 만료는 재발급을 위한 정상 시나리오일 수 있으므로, 요청을 계속 진행시켜 permitAll() 경로에 대한 접근을 허용한다.
+            if (validation.getErrorType() == TokenValidationResult.ValidationError.EXPIRED) {
+                SecurityContextHolder.clearContext(); // 컨텍스트는 비워줌
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            // 만료 외 다른 모든 토큰 오류(형식, 서명 등)는 비정상으로 간주하고 즉시 실패 처리
             handleAuthenticationFailure(response, validation, clientIp, userAgent);
-            return;
 
         } catch (Exception e) {
             log.error("Unexpected error in JWT filter", e);
