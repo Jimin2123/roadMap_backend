@@ -1,7 +1,7 @@
 package com.shingu.roadmap.member.repository;
 
 import com.shingu.roadmap.member.domain.Member;
-import io.lettuce.core.dynamic.annotation.Param;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
