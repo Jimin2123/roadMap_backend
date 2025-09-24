@@ -134,14 +134,14 @@ public class AuthService {
     // 6) 새로운 RefreshToken 엔티티 생성 및 저장
     RefreshToken newTokenEntity = RefreshToken.builder()
             .token(newRefreshToken)
+            .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
             .build();
 
     // 7) Member와 새로운 RefreshToken 연결
     member.updateRefreshToken(newTokenEntity);
-    // Member의 refreshToken 참조가 저장소에 반영됩니다.
 
-    return new LoginResponse(newAccessToken, newRefreshToken);
     // 트랜잭션 종료 시 변경 감지에 의해 Member의 refreshToken 참조가 업데이트됨
+    return new LoginResponse(newAccessToken, newRefreshToken);
   }
 
   /**
