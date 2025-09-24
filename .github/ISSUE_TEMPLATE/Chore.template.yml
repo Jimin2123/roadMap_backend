@@ -1,0 +1,20 @@
+name: '🛠️ Chore'
+description: '빌드, 설정, 기타 잡다한 작업을 기록합니다.'
+title: '[Chore] '
+labels: ['chore']
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: '작업 내용'
+      description: '어떤 작업을 하실 예정인가요?'
+      placeholder: '예: CI/CD 파이프라인 개선, 의존성 라이브러리 버전 업데이트 등'
+    validations:
+      required: true
+  - type: checkboxes
+    id: tasks
+    attributes:
+      label: '✅ 작업 목록'
+      description: '세부적인 작업 목록을 작성해주세요.'
+      options:
+        - label: '...'

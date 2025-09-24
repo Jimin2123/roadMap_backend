@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "💬 General Question or Discussion"
+    url: https://github.com/shingu-roadmap/RoadMap/discussions/new
+    about: Please avoid creating issues for general questions. Use GitHub Discussions instead.

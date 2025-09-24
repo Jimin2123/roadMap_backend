@@ -1,0 +1,30 @@
+name: '📝 Docs'
+description: '문서 추가 또는 수정을 요청합니다.'
+title: '[Docs] '
+labels: ['documentation']
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: '문서 변경 유형'
+      description: '어떤 종류의 문서 변경인가요?'
+      options:
+        - '새로운 문서 추가'
+        - '기존 문서 내용 수정'
+        - '오타 수정'
+        - '문서 삭제'
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: '설명'
+      description: '무엇을, 왜 변경해야 하는지 설명해주세요.'
+      placeholder: '예: OOO 기능에 대한 API 명세가 누락되어 추가가 필요합니다.'
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: '추가 정보'
+      description: '관련된 이슈나 참고 자료가 있다면 링크를 첨부해주세요.'
