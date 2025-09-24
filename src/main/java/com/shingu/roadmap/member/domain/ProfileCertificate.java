@@ -43,17 +43,6 @@ public class ProfileCertificate {
     this.acquiredYear = normalize(acquiredYear);
   }
 
-  @PrePersist
-  private void initializeId() {
-    if (this.id == null) {
-      this.id = new ProfileCertificateId();
-    }
-    if (this.profile != null && this.certificate != null) {
-      this.id.setProfileId(this.profile.getId());
-      this.id.setCertificateId(this.certificate.getJmcd());
-    }
-  }
-
   public static ProfileCertificate of(Profile profile, Certificate certificate, String acquiredYear) {
     return ProfileCertificate.builder()
             .profile(profile)
