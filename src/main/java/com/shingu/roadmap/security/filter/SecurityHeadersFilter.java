@@ -38,9 +38,32 @@ public class SecurityHeadersFilter implements Filter {
                 "max-age=31536000; includeSubDomains; preload");
         }
 
-        // CSP 설정
-        httpResponse.setHeader("Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+        // CSP 설정 - 환경별 차별화
+        if (isProductionEnvironment()) {
+            // 프로덕션: 보안 강화된 CSP 정책
+            httpResponse.setHeader("Content-Security-Policy",
+                "default-src 'self'; " +
+                "script-src 'self'; " +
+                "style-src 'self'; " +
+                "img-src 'self' data:; " +
+                "font-src 'self'; " +
+                "connect-src 'self'; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "form-action 'self'");
+        } else {
+            // 개발환경: 개발 편의를 위해 완화된 정책
+            httpResponse.setHeader("Content-Security-Policy",
+                "default-src 'self'; " +
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data:; " +
+                "font-src 'self'; " +
+                "connect-src 'self'; " +
+                "frame-ancestors 'none'; " +
+                "base-uri 'self'; " +
+                "form-action 'self'");
+        }
 
         // Referrer 정책
         httpResponse.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");

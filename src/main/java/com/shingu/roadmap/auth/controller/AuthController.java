@@ -8,17 +8,24 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
+import java.util.Arrays;
+
 @RestController
 @RequiredArgsConstructor
 public class AuthController implements AuthControllerSwagger {
 
   private final AuthService authService;
+  private final Environment environment;
 
   private static final String REFRESH_COOKIE_NAME = "refreshToken";
   private static final int REFRESH_COOKIE_MAX_AGE_SEC = 14 * 24 * 60 * 60;
@@ -32,13 +39,13 @@ public class AuthController implements AuthControllerSwagger {
   ) {
     LoginResponse tokens = authService.login(loginRequest);
 
-    // refresh 토큰을 HttpOnly 쿠키로 저장
-    Cookie refreshTokenCookie = buildRefreshTokenCookie(
+    // refresh 토큰을 보안 강화된 HttpOnly 쿠키로 저장
+    ResponseCookie refreshTokenCookie = buildSecureRefreshTokenCookie(
             tokens.refreshToken(),
             /*delete*/ false,
             /*secure*/ request.isSecure()
     );
-    response.addCookie(refreshTokenCookie);
+    response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
 
     // 액세스 토큰만 바디로 반환
     return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
@@ -59,12 +66,12 @@ public class AuthController implements AuthControllerSwagger {
 
     // 회전이 발생하면 쿠키도 교체
     if (tokens.refreshToken() != null) {
-      Cookie refreshTokenCookie = buildRefreshTokenCookie(
+      ResponseCookie refreshTokenCookie = buildSecureRefreshTokenCookie(
               tokens.refreshToken(),
               /*delete*/ false,
               /*secure*/ request.isSecure()
       );
-      response.addCookie(refreshTokenCookie);
+      response.addHeader(HttpHeaders.SET_COOKIE, refreshTokenCookie.toString());
       return ResponseEntity.ok(new LoginResponse(tokens.accessToken(), null));
     }
 
@@ -85,33 +92,54 @@ public class AuthController implements AuthControllerSwagger {
     }
 
     // 쿠키 제거
-    Cookie deleteCookie = buildRefreshTokenCookie(
+    ResponseCookie deleteCookie = buildSecureRefreshTokenCookie(
             null,
             /*delete*/ true,
             /*secure*/ request.isSecure()
     );
-    response.addCookie(deleteCookie);
+    response.addHeader(HttpHeaders.SET_COOKIE, deleteCookie.toString());
 
     return ResponseEntity.ok().build();
   }
 
   /* ===================== 헬퍼 ===================== */
 
-  private Cookie buildRefreshTokenCookie(String value, boolean delete, boolean secure) {
-    Cookie cookie = new Cookie(REFRESH_COOKIE_NAME, delete ? null : value);
-    cookie.setHttpOnly(true);
-    cookie.setSecure(secure); // HTTPS 환경에서 true
-    cookie.setPath("/");
+  /**
+   * CSRF 공격 방어를 위한 보안 강화된 Refresh Token 쿠키 생성
+   * - SameSite 속성으로 CSRF 공격 차단
+   * - 환경별 차별화된 보안 정책 적용
+   */
+  private ResponseCookie buildSecureRefreshTokenCookie(String value, boolean delete, boolean secure) {
+    ResponseCookie.ResponseCookieBuilder cookieBuilder = ResponseCookie.from(REFRESH_COOKIE_NAME, delete ? "" : value)
+            .httpOnly(true)
+            .secure(secure)
+            .path("/");
 
     if (delete) {
-      cookie.setMaxAge(0);
+      cookieBuilder.maxAge(Duration.ZERO);
     } else {
-      cookie.setMaxAge(REFRESH_COOKIE_MAX_AGE_SEC);
+      cookieBuilder.maxAge(Duration.ofSeconds(REFRESH_COOKIE_MAX_AGE_SEC));
     }
 
-    // SameSite 설정이 필요하면 ResponseCookie 사용으로 전환 권장
-    // (기본 Cookie API에는 SameSite 속성이 없음)
-    return cookie;
+    // 환경별 SameSite 정책 차별화
+    if (isProductionEnvironment()) {
+      // 프로덕션: 엄격한 CSRF 보안 정책
+      cookieBuilder.sameSite("Strict");
+    } else {
+      // 개발환경: 개발 편의를 위한 완화된 정책
+      cookieBuilder.sameSite("Lax");
+    }
+
+    return cookieBuilder.build();
+  }
+
+  /**
+   * 프로덕션 환경 여부 확인
+   */
+  private boolean isProductionEnvironment() {
+    String[] activeProfiles = environment.getActiveProfiles();
+    return Arrays.asList(activeProfiles).contains("prod") ||
+           Arrays.asList(activeProfiles).contains("production");
   }
 
   private String extractRefreshTokenFromCookie(HttpServletRequest request) {

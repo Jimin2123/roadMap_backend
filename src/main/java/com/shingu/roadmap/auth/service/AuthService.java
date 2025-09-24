@@ -89,23 +89,31 @@ public class AuthService {
 
   /**
    * Refresh 토큰으로 액세스 토큰 재발급
-   * - DB에 저장된 토큰인지 확인
+   * - 동시 접근 제어를 위한 비관적 잠금 사용
+   * - One-Time-Use 패턴 적용 (Race Condition 방지)
+   * - DB에 저장된 토큰인지 확인 후 즉시 삭제
    * - 만료/서명/유형 검증
-   * - Access Token 재발급
-   * - 남은 만료시간이 임계 미만이면 Refresh 토큰 회전(rotate + renewTo)
+   * - Access Token 및 새로운 Refresh Token 재발급
    */
   @Transactional
   public LoginResponse refreshToken(String refreshToken) {
-    // 1) 존재/만료 확인
-    RefreshToken tokenEntity = refreshTokenRepository.findByToken(refreshToken)
-            .orElseThrow(() -> new InvalidRefreshTokenException());
+    // 1) 비관적 락으로 토큰 조회 및 존재 확인 (Race Condition 방지)
+    RefreshToken tokenEntity = refreshTokenRepository.findByTokenForUpdate(refreshToken)
+            .orElseThrow(() -> new InvalidRefreshTokenException("존재하지 않는 또는 이미 사용된 Refresh Token입니다."));
 
+    // 2) 만료 확인 및 즉시 삭제 (One-Time-Use)
     if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
       refreshTokenRepository.delete(tokenEntity);
       throw new ExpiredRefreshTokenException();
     }
 
-    // 2) JWT 무결성 및 유형(refresh) 검증
+    // 3) 토큰 사용 전 즉시 삭제 (One-Time-Use 보장)
+    int deletedCount = refreshTokenRepository.deleteByTokenImmediate(refreshToken);
+    if (deletedCount == 0) {
+      throw new InvalidRefreshTokenException("이미 사용된 Refresh Token입니다.");
+    }
+
+    // 4) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
       throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
     }
@@ -119,7 +127,7 @@ public class AuthService {
 
     String email = claims.get("email", String.class);
 
-    // 3) 사용자 로드
+    // 5) 사용자 로드
     UserDetails userDetails;
     try {
       userDetails = userDetailsService.loadUserByUsername(email);
@@ -136,20 +144,20 @@ public class AuthService {
             member.getRole()
     );
 
-    // 4) Access 토큰 재발급
+    // 6) Access 토큰 및 새로운 Refresh 토큰 재발급
     String newAccessToken = jwtUtil.generateAccessToken(payload);
+    String newRefreshToken = jwtUtil.generateRefreshToken(payload);
 
-    // 5) Refresh 회전 조건 검사 및 처리
-    long remainingMinutes = Duration.between(Instant.now(), tokenEntity.getExpiresAt()).toMinutes();
-    if (remainingMinutes < REFRESH_ROTATE_THRESHOLD_MINUTES) {
-      String rotated = jwtUtil.generateRefreshToken(payload);
-      tokenEntity.rotate(rotated);
-      tokenEntity.renewTo(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS));
-      refreshTokenRepository.save(tokenEntity);
-      return new LoginResponse(newAccessToken, rotated);
-    }
+    // 7) 새로운 RefreshToken 저장
+    RefreshToken newTokenEntity = RefreshToken.builder()
+            .token(newRefreshToken)
+            .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
+            .build();
 
-    return new LoginResponse(newAccessToken, null);
+    // Member와 새로운 RefreshToken 연결
+    member.updateRefreshToken(newTokenEntity);
+
+    return new LoginResponse(newAccessToken, newRefreshToken);
   }
 
   /**
