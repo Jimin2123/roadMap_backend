@@ -98,3 +98,7 @@ dependencies {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+springBoot {
+    mainClass = 'com.shingu.roadmap.RoadMapApplication'
+}
