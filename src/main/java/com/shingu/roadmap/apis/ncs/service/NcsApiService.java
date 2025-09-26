@@ -4,11 +4,9 @@ import com.shingu.roadmap.apis.ncs.client.NcsApiClient;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupationStandardLink;
 import com.shingu.roadmap.apis.ncs.domain.NcsTrainingStandard;
-import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationResponse;
-import com.shingu.roadmap.apis.ncs.dto.response.NcsTrainingStandardResponse;
+import com.shingu.roadmap.apis.ncs.dto.response.*;
 import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
 import com.shingu.roadmap.apis.ncs.repository.NcsTrainingStandardRepository;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -100,7 +98,7 @@ public class NcsApiService {
 
     if (items == null || items.isEmpty()) return false;
 
-    NcsOccupationResponse.NcsOccupationItem item = items.get(0);
+    NcsOccupationResponse.NcsOccupationItem item = items.getFirst();
 
     // 2. 직무 도메인 생성
     NcsOccupation ncsOccupation = new NcsOccupation(
@@ -148,5 +146,36 @@ public class NcsApiService {
     // 6. 직무 정보 저장
     ncsOccupationRepository.save(ncsOccupation);
     return true;
+  }
+
+  /**
+   * NCS 직책 조회
+   *
+   * @param ncsCode NCS 코드
+   * @return NCS 직책 응답 DTO
+   */
+  public NcsJobPositionResponse getNcsJobPosition(String ncsCode) {
+    return ncsApiClient.getNcsJobPosition(ncsCode);
+  }
+
+  /**
+   * NCS 능력단위 조회
+   *
+   * @param ncsCode NCS 코드
+   * @return NCS 능력단위 응답 DTO
+   */
+  public NcsCompUnitResponse getNcsCompUnit(String ncsCode) {
+    return ncsApiClient.getNcsCompetencyUnit(ncsCode);
+  }
+
+  /**
+   * NCS KSA 조회
+   *
+   * @param ncsCode    NCS 코드
+   * @param compUnitCd 능력단위 코드
+   * @return NCS KSA 응답 DTO
+   */
+  public NcsKsaResponse getNcsKsa(String ncsCode, String compUnitCd) {
+    return ncsApiClient.getNcsKsaByDutyCode(ncsCode, compUnitCd);
   }
 }
