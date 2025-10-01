@@ -423,8 +423,25 @@ public class OpenAiService {
     if (resume == null) return "";
     StringBuilder sb = new StringBuilder();
 
-    if (resume.getIntroduction() != null && resume.getIntroduction().getContent() != null) {
-      sb.append("자기소개: ").append(resume.getIntroduction().getContent()).append("\n\n");
+    if (resume.getIntroduction() != null) {
+      Introduction intro = resume.getIntroduction();
+
+      // 각 항목(성장과정, 강점, 학교생활, 지원동기)의 내용이 비어있지 않은 경우에만 추가합니다.
+      if (intro.getGrowthProcess() != null && !intro.getGrowthProcess().isBlank()) {
+        sb.append("성장과정: ").append(intro.getGrowthProcess()).append("\n\n");
+      }
+
+      if (intro.getStrengths() != null && !intro.getStrengths().isBlank()) {
+        sb.append("장점 및 강점: ").append(intro.getStrengths()).append("\n\n");
+      }
+
+      if (intro.getSchoolLife() != null && !intro.getSchoolLife().isBlank()) {
+        sb.append("학교생활: ").append(intro.getSchoolLife()).append("\n\n");
+      }
+
+      if (intro.getMotivation() != null && !intro.getMotivation().isBlank()) {
+        sb.append("지원동기: ").append(intro.getMotivation()).append("\n\n");
+      }
     }
     if (resume.getEducation() != null) {
       Education edu = resume.getEducation();

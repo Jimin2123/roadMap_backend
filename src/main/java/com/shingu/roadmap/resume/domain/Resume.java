@@ -49,6 +49,11 @@ public class Resume {
           foreignKey = @ForeignKey(name = "fk_resume_education"))
   private Education education;
 
+  @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+  @JoinColumn(name = "desired_company_id",
+          foreignKey = @ForeignKey(name = "fk_resume_desired_company"))
+  private DesiredCompany desiredCompany;
+
   /* ===== 편의/비즈니스 메서드 ===== */
 
   public void setIntroduction(Introduction intro) {

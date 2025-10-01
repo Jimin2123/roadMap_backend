@@ -143,9 +143,16 @@ public class ResumeService {
   /* ============================ Mappers ============================ */
 
   private Introduction toIntroduction(IntroductionRequest dto) {
-    // 도메인은 updateContent도 있지만 최초 생성은 builder 사용
+    if (dto == null) {
+      return null; // DTO가 null이면 null을 반환
+    }
+
+    // 각 필드를 DTO로부터 받아와 빌더를 통해 엔티티를 생성
     return Introduction.builder()
-            .content(dto != null ? dto.content() : null)
+            .growthProcess(dto.growthProcess())
+            .strengths(dto.strengths())
+            .schoolLife(dto.schoolLife())
+            .motivation(dto.motivation())
             .build();
   }
 
