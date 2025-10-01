@@ -68,6 +68,14 @@ public class Resume {
 
   public void clearEducation() { this.education = null; }
 
+  public void setDesiredCompany(DesiredCompany desiredCompany) {
+    this.desiredCompany = desiredCompany;
+  }
+
+  public void clearDesiredCompany() {
+    this.desiredCompany = null;
+  }
+
   public void addActivity(Activity a) {
     if (a == null) return;
     if (!Objects.equals(a.getResume(), this)) {

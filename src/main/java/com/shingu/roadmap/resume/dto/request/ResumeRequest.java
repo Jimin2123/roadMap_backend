@@ -26,5 +26,9 @@ public record ResumeRequest(
 
         @Schema(description = "학력 정보 목록", implementation = EducationRequest.class)
         @Valid
-        EducationRequest education
+        EducationRequest education,
+
+        @Schema(description = "희망 직무 및 회사 정보", implementation = DesiredCompanyRequest.class)
+        @Valid
+        DesiredCompanyRequest desiredCompany
 ) { }

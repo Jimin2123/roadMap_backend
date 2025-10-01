@@ -11,6 +11,7 @@ import java.util.List;
 public record ResumeResponse(
         IntroductionResponse introduction,
         EducationResponse education,
+        DesiredCompanyResponse desiredCompany,
         List<ActivityResponse> activities,
         List<ProjectResponse> projects
 ) {
@@ -40,6 +41,7 @@ public record ResumeResponse(
     return new ResumeResponse(
             IntroductionResponse.from(resume.getIntroduction()),
             EducationResponse.from(resume.getEducation()),
+            DesiredCompanyResponse.from(resume.getDesiredCompany()),
             activityDtos,
             projectDtos
     );

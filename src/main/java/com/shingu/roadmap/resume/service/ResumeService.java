@@ -38,11 +38,13 @@ public class ResumeService {
     Resume resume = Resume.builder().build();
 
     // 2) Introduction / Education 세팅 (단방향 1:1)
-    if (resumeReq.introduction() != null) {
-      resume.setIntroduction(toIntroduction(resumeReq.introduction()));
-    }
     if (resumeReq.education() != null) {
       resume.setEducation(toEducation(resumeReq.education()));
+    }
+
+    // 3) DesiredCompany 세팅 (단방향 1:1)
+    if (resumeReq.desiredCompany() != null) {
+      resume.setDesiredCompany(toDesiredCompany(resumeReq.desiredCompany()));
     }
 
     // 3) Activities / Projects 조립 (양방향은 Resume 편의 메서드로만 연결)
@@ -99,6 +101,12 @@ public class ResumeService {
       resume.clearEducation();
     }
 
+    if (resumeReq.desiredCompany() != null) {
+      resume.setDesiredCompany(toDesiredCompany(resumeReq.desiredCompany()));
+    } else {
+      resume.clearDesiredCompany();
+    }
+
     // Activities / Projects 업데이트 (기존 데이터 클리어 후 새로 추가)
     resume.getActivities().clear();
     if (!CollectionUtils.isEmpty(resumeReq.activities())) {
@@ -141,6 +149,18 @@ public class ResumeService {
   }
 
   /* ============================ Mappers ============================ */
+
+  private DesiredCompany toDesiredCompany(DesiredCompanyRequest dto) {
+    if (dto == null) return null;
+    return DesiredCompany.builder()
+            .desiredCompany1(dto.desiredCompany1())
+            .desiredCompany2(dto.desiredCompany2())
+            .desiredRegion(dto.desiredRegion())
+            .salaryType(dto.salaryType())
+            .desiredSalary(dto.desiredSalary())
+            .careerPlan(dto.careerPlan())
+            .build();
+  }
 
   private Introduction toIntroduction(IntroductionRequest dto) {
     if (dto == null) {
