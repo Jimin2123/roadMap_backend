@@ -161,6 +161,7 @@ public class ResumeService {
     return Education.builder()
             .school(dto.school())
             .major(dto.major())
+            .gpa(dto.gpa())
             .status(dto.status())
             .period(toPeriod(dto.period()))
             .build();

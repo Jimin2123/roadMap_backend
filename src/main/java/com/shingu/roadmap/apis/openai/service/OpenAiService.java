@@ -445,7 +445,7 @@ public class OpenAiService {
     }
     if (resume.getEducation() != null) {
       Education edu = resume.getEducation();
-      sb.append("학력: ").append(edu.getSchool()).append(" ").append(edu.getMajor()).append(" (").append(edu.getStatus()).append(")\n")
+      sb.append("학력: ").append(edu.getSchool()).append(" ").append(edu.getMajor()).append(" ").append(edu.getGpa()).append(" (").append(edu.getStatus()).append(")\n")
               .append("  기간: ").append(formatPeriod(edu.getPeriod())).append("\n\n");
     }
     if (resume.getProjects() != null && !resume.getProjects().isEmpty()) {
