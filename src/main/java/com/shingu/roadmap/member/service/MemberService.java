@@ -73,9 +73,8 @@ public class MemberService {
         // 기존 프로필 조립
         Profile profile = assembleProfile(req, resume);
 
-        // 스킬/자격/희망직무/NCS 역량 보강
+        // 스킬/희망직무/NCS 역량 보강
         enrichWithSkills(req, profile);
-        enrichWithCertificates(req, profile);
         enrichWithDesiredJobs(req, profile);
         recommendCapabilities(profile);
 
@@ -149,7 +148,6 @@ public class MemberService {
         return Profile.builder()
                 .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
                 .desiredJobs(new HashSet<>())
-                .profileCertificates(new HashSet<>())
                 .profileSkills(new HashSet<>())
                 .desiredCapabilities(new HashSet<>())
                 .userCapabilities(new HashSet<>())
@@ -174,22 +172,6 @@ public class MemberService {
         }
     }
 
-    private void enrichWithCertificates(ProfileRequest req, Profile profile) {
-        profile.getProfileCertificates().clear();
-        if (req == null || CollectionUtils.isEmpty(req.certificates())) return;
-
-        for (var certReq : req.certificates()) {
-            ProfileCertificate pc = profileCertificateOf(profile, certReq.name(), certReq.year());
-            profile.addCertificate(pc);
-        }
-    }
-
-    private ProfileCertificate profileCertificateOf(Profile profile, String certName, String year) {
-        Certificate cert = certificateRepository.findByJmfldnm(certName)
-                .orElseThrow(() -> new CertificateNotFoundException(certName));
-        return ProfileCertificate.of(profile, cert, year);
-    }
-
     private void enrichWithDesiredJobs(ProfileRequest req, Profile profile) {
         if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
 
@@ -210,7 +192,8 @@ public class MemberService {
     }
 
     private void recommendUserCapabilities(Profile profile) {
-        if (profile.getProfileSkills().isEmpty() && profile.getProfileCertificates().isEmpty()) return;
+        Resume resume = profile.getResume();
+        if (profile.getProfileSkills().isEmpty() && (resume == null || resume.getCertificates().isEmpty())) return;
 
         Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(profile)
                 .blockOptional().orElseGet(HashSet::new);

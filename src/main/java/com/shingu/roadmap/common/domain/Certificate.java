@@ -1,6 +1,6 @@
 package com.shingu.roadmap.common.domain;
 
-import com.shingu.roadmap.member.domain.ProfileCertificate;
+import com.shingu.roadmap.resume.domain.ResumeCertificate;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -55,7 +55,7 @@ public class Certificate {
 
   @OneToMany(mappedBy = "certificate", fetch = FetchType.LAZY)
   @Builder.Default
-  private Set<ProfileCertificate> profileCertificates = new HashSet<>();
+  private Set<ResumeCertificate> resumeCertificates = new HashSet<>();
 
   /* ===== 비즈니스 메서드(선택) ===== */
   // 마스터 데이터로서 변경을 최소화하고 싶다면, 아래 메서드도 제거하거나 접근 제한을 두세요.
@@ -69,12 +69,12 @@ public class Certificate {
     this.qualgbcd = normalize(qualgbcd);
   }
 
-  /* 양방향 편의(필요 시) — ProfileCertificate에서 certificate를 교체할 때 사용 */
-  void addProfileCertificate(ProfileCertificate pc) {
-    if (pc != null) this.profileCertificates.add(pc);
+  /* 양방향 편의(필요 시) — ResumeCertificate에서 certificate를 교체할 때 사용 */
+  void addResumeCertificate(ResumeCertificate rc) {
+    if (rc != null) this.resumeCertificates.add(rc);
   }
-  void removeProfileCertificate(ProfileCertificate pc) {
-    if (pc != null) this.profileCertificates.remove(pc);
+  void removeResumeCertificate(ResumeCertificate rc) {
+    if (rc != null) this.resumeCertificates.remove(rc);
   }
 
   private static String normalize(String v) {

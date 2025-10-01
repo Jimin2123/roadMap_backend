@@ -112,7 +112,7 @@ public class OpenAiService {
         %s
     """.formatted(
             profile.getProfileSkills().stream().map(ps -> ps.getSkill().getName()).collect(Collectors.joining(", ")),
-            profile.getProfileCertificates().stream().map(pc -> pc.getCertificate().getJmfldnm()).collect(Collectors.joining(", ")),
+            profile.getResume() != null ? profile.getResume().getCertificates().stream().map(rc -> rc.getCertificate().getJmfldnm()).collect(Collectors.joining(", ")) : "",
             profile.getUserCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
             profile.getDesiredCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
             resumeToText(profile.getResume())
@@ -193,9 +193,9 @@ public class OpenAiService {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
-    String certificates = profile.getProfileCertificates().stream()
-            .map(pc -> pc.getCertificate().getJmfldnm())
-            .collect(Collectors.joining(", "));
+    String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+            .map(rc -> rc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", ")) : "";
 
     String initialPrompt = String.format("""
         당신은 제공된 이력서와 사용자 정보를 **오직 그 근거로만** 분석하는 고도로 정확한 커리어 분석 AI입니다.
@@ -293,9 +293,9 @@ public class OpenAiService {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
-    String certificates = profile.getProfileCertificates().stream()
-            .map(pc -> pc.getCertificate().getJmfldnm())
-            .collect(Collectors.joining(", "));
+    String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+            .map(rc -> rc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", ")) : "";
 
     String validationPrompt = String.format("""
         당신은 NCS 코드 추천의 정확성을 검증하는 선임 커리어 컨설턴트입니다.
@@ -362,9 +362,9 @@ public class OpenAiService {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
-    String certificates = profile.getProfileCertificates().stream()
-            .map(pc -> pc.getCertificate().getJmfldnm())
-            .collect(Collectors.joining(", "));
+    String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+            .map(rc -> rc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", ")) : "";
 
     String regenerationPrompt = String.format("""
         선임 컨설턴트의 검토 결과, 이전 추천이 모두 부적절하다고 판단되었습니다.

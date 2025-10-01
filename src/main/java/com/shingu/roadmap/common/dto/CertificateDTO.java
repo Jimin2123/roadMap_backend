@@ -1,6 +1,6 @@
 package com.shingu.roadmap.common.dto;
 
-import com.shingu.roadmap.member.domain.ProfileCertificate;
+import com.shingu.roadmap.resume.domain.ResumeCertificate;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "자격증 (응답, 요청) DTO")
@@ -14,11 +14,11 @@ public record CertificateDTO(
         @Schema(description = "취득 연도", example = "2022")
         String year
 ) {
-        public static CertificateDTO from(ProfileCertificate pc) {
+        public static CertificateDTO from(ResumeCertificate rc) {
                 return new CertificateDTO(
-                        pc.getCertificate().getJmfldnm(),
-                        pc.getCertificate().getQualgbnm(),
-                        pc.getAcquiredYear()
+                        rc.getCertificate().getJmfldnm(),
+                        rc.getCertificate().getQualgbnm(),
+                        rc.getAcquiredYear()
                 );
         }
 }

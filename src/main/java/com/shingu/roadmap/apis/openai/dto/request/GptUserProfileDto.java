@@ -1,11 +1,11 @@
 package com.shingu.roadmap.apis.openai.dto.request;
 
-import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationDto;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
 import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public record GptUserProfileDto(
@@ -17,16 +17,19 @@ public record GptUserProfileDto(
         List<String> userCapabilities
 ) {
   public static GptUserProfileDto from(ProfileResponse profile) {
+    // Resume에서 certificates를 가져옵니다
+    List<String> certificateNames = profile.resume() != null && profile.resume().certificates() != null
+            ? profile.resume().certificates().stream().map(CertificateDTO::name).toList()
+            : new ArrayList<>();
+
     return new GptUserProfileDto(
             profile.educationLevel(),
             profile.desiredJob().stream().map(SaraminJobDto::name).toList(),
-
+            certificateNames,
             // 각 DTO에서 이름과 숙련도를 꺼내 "기술이름 (숙련도)" 형식의 문자열로 만듭니다.
             profile.skills().stream()
                     .map(skillDto -> String.format("%s (%s)", skillDto.name(), skillDto.proficiency()))
                     .toList(),
-
-            profile.certificates().stream().map(CertificateDTO::name).toList(),
             profile.desiredCapabilities().stream().map(NcsOccupationDto::code).toList(),
             profile.userCapabilities().stream().map(NcsOccupationDto::code).toList()
     );

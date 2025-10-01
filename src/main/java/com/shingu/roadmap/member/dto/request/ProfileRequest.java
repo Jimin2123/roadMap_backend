@@ -1,6 +1,5 @@
 package com.shingu.roadmap.member.dto.request;
 
-import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.common.enums.EducationLevelType;
 import com.shingu.roadmap.resume.dto.request.ResumeRequest;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -28,11 +27,6 @@ public record ProfileRequest(
         @Size(max = 50, message = "기술은 최대 50개까지 등록 가능합니다")
         @Valid
         Set<SkillRequest> skills,
-
-        @ArraySchema(schema = @Schema(description = "자격증", implementation = CertificateDTO.class))
-        @Size(max = 30, message = "자격증은 최대 30개까지 등록 가능합니다")
-        @Valid
-        Set<CertificateDTO> certificates,
 
         @Schema(description = "이력서 정보", implementation = ResumeRequest.class)
         @Valid

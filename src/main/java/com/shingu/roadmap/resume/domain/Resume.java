@@ -4,8 +4,10 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 @Entity
 @Getter
@@ -19,7 +21,8 @@ import java.util.Objects;
                 @NamedAttributeNode("introduction"),
                 @NamedAttributeNode("education"),
                 @NamedAttributeNode("activities"),
-                @NamedAttributeNode("projects")
+                @NamedAttributeNode("projects"),
+                @NamedAttributeNode("certificates")
         }
 )
 public class Resume {
@@ -53,6 +56,11 @@ public class Resume {
   @JoinColumn(name = "desired_company_id",
           foreignKey = @ForeignKey(name = "fk_resume_desired_company"))
   private DesiredCompany desiredCompany;
+
+  @OneToMany(mappedBy = "resume", fetch = FetchType.LAZY,
+          cascade = CascadeType.ALL, orphanRemoval = true)
+  @Builder.Default
+  private Set<ResumeCertificate> certificates = new HashSet<>();
 
   /* ===== 편의/비즈니스 메서드 ===== */
 
@@ -103,6 +111,24 @@ public class Resume {
     if (p == null) return;
     if (this.projects.remove(p)) {
       p.setResumeInternal(null);
+    }
+  }
+
+  public void addCertificate(ResumeCertificate rc) {
+    if (rc == null) return;
+    if (this.certificates.add(rc)) {
+      if (!Objects.equals(rc.getResume(), this)) {
+        rc.setResume(this);
+      }
+    }
+  }
+
+  public void removeCertificate(ResumeCertificate rc) {
+    if (rc == null) return;
+    if (this.certificates.remove(rc)) {
+      if (Objects.equals(rc.getResume(), this)) {
+        rc.setResume(null);
+      }
     }
   }
 }

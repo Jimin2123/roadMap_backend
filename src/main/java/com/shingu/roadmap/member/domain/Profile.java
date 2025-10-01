@@ -21,7 +21,6 @@ import java.util.Set;
         name = "Profile.graph.forResponse",
         attributeNodes = {
                 @NamedAttributeNode("desiredJobs"),
-                @NamedAttributeNode("profileCertificates"),
                 @NamedAttributeNode("profileSkills"),
                 @NamedAttributeNode("desiredCapabilities"),
                 @NamedAttributeNode("userCapabilities"),
@@ -52,11 +51,6 @@ public class Profile {
           inverseJoinColumns = @JoinColumn(name = "job_code"))
   @Builder.Default
   private Set<SaraminJob> desiredJobs = new HashSet<>();
-
-  @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
-          cascade = CascadeType.ALL, orphanRemoval = true)
-  @Builder.Default
-  private Set<ProfileCertificate> profileCertificates = new HashSet<>();
 
   @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
           cascade = CascadeType.ALL, orphanRemoval = true)
@@ -100,20 +94,6 @@ public class Profile {
   public void removeUserCapability(NcsOccupation ncs) { if (ncs != null) this.userCapabilities.remove(ncs); }
 
   /* --- 양방향 일관성: 자식이 주인(mappedBy="profile")이므로 setProfile(this) 필요 --- */
-  public void addCertificate(ProfileCertificate pc) {
-    if (pc == null) return;
-    if (this.profileCertificates.add(pc)) {
-      if (!Objects.equals(pc.getProfile(), this)) pc.setProfile(this);
-    }
-  }
-
-  public void removeCertificate(ProfileCertificate pc) {
-    if (pc == null) return;
-    if (this.profileCertificates.remove(pc)) {
-      if (Objects.equals(pc.getProfile(), this)) pc.setProfile(null);
-    }
-  }
-
   public void addSkill(ProfileSkill ps) {
     if (ps == null) return;
     if (this.profileSkills.add(ps)) {

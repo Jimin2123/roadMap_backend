@@ -1,10 +1,13 @@
 package com.shingu.roadmap.resume.service;
 
+import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.common.domain.Skill;
+import com.shingu.roadmap.common.repository.CertificateRepository;
 import com.shingu.roadmap.common.repository.SkillRepository;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.member.exception.CertificateNotFoundException;
 import com.shingu.roadmap.member.service.MemberService;
 import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.resume.dto.request.*;
@@ -24,6 +27,7 @@ public class ResumeService {
 
   private final MemberService memberService;
   private final SkillRepository skillRepository;
+  private final CertificateRepository certificateRepository;
 
   /* ============================ Commands ============================ */
 
@@ -63,7 +67,15 @@ public class ResumeService {
       }
     }
 
-    // 4) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
+    // 4) Certificates 조립
+    if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
+      for (var certReq : resumeReq.certificates()) {
+        ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());
+        resume.addCertificate(rc);
+      }
+    }
+
+    // 5) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
     try {
       return memberService.updateProfile(memberId, request, resume);
     } catch (Exception e) {
@@ -122,6 +134,15 @@ public class ResumeService {
         Project p = toProjectSkeleton(pReq);
         attachProjectExtras(p, pReq);
         resume.addProject(p);
+      }
+    }
+
+    // Certificates 업데이트
+    resume.getCertificates().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
+      for (var certReq : resumeReq.certificates()) {
+        ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());
+        resume.addCertificate(rc);
       }
     }
 
@@ -241,6 +262,12 @@ public class ResumeService {
   private Skill findOrCreateSkill(String skillName) {
     return skillRepository.findByName(skillName)
             .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build()));
+  }
+
+  private ResumeCertificate resumeCertificateOf(Resume resume, String certName, String year) {
+    Certificate cert = certificateRepository.findByJmfldnm(certName)
+            .orElseThrow(() -> new CertificateNotFoundException(certName));
+    return ResumeCertificate.of(resume, cert, year);
   }
 
   private Period toPeriod(PeriodRequest dto) {

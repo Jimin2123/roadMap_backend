@@ -2,7 +2,6 @@ package com.shingu.roadmap.member.dto.response;
 
 import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationDto;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
-import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -28,9 +27,6 @@ public record ProfileResponse(
         @Schema(description = "희망 직무 목록")
         Set<SaraminJobDto> desiredJob,
 
-        @Schema(description = "자격증 목록")
-        Set<CertificateDTO> certificates,
-
         @Schema(description = "보유 기술 목록")
         Set<ProfileSkillDTO> skills,
 
@@ -54,9 +50,6 @@ public record ProfileResponse(
                         profile.getRecommendedEncyclopediaThemeCode(),
                         profile.getDesiredJobs().stream()
                                 .map(SaraminJobDto::from)
-                                .collect(Collectors.toSet()),
-                        profile.getProfileCertificates().stream()
-                                .map(CertificateDTO::from)
                                 .collect(Collectors.toSet()),
                         profile.getProfileSkills().stream()
                                 .map(ProfileSkillDTO::from)
