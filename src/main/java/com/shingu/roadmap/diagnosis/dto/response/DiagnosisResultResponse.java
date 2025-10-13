@@ -15,12 +15,6 @@ public record DiagnosisResultResponse(
         @Schema(description = "추천 NCS 코드 목록 (각 후보별 KSA 분석 포함)")
         List<NcsAnalysisResponse> ncsAnalyses,
 
-        @Schema(description = "추천 직무 목록")
-        List<String> recommendedJobs,
-
-        @Schema(description = "추천 교육 목록")
-        List<String> recommendedTrainings,
-
         @Schema(description = "전체 분석에 대한 신뢰도 점수 (0.0 ~ 1.0)", example = "0.88")
         Double confidenceScore,
 
