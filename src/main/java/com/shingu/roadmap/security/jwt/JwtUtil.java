@@ -34,6 +34,7 @@ public class JwtUtil {
 
     return Jwts.builder()
             .setClaims(claims)
+            .setId(UUID.randomUUID().toString()) // JTI (JWT ID) 클레임 설정으로 토큰 고유성 보장
             .setSubject(payload.memberId().toString())
             .setIssuer(jwtProperties.getIssuer())
             .setAudience(jwtProperties.getAudience())
