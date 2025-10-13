@@ -18,7 +18,10 @@ public record KsaAnalysisResponse(
         List<KsaItem> attitudeItems,
 
         @Schema(description = "KSA 분석에 대한 전체적인 평가 요약")
-        String overallAssessment
+        String overallAssessment,
+
+        @Schema(description = "분석 근거 목록 (원본 텍스트에서 추출된 구체적인 증거)")
+        List<Evidence> evidenceList
 ) {
     @Schema(description = "KSA 개별 항목 분석 결과")
     public record KsaItem(

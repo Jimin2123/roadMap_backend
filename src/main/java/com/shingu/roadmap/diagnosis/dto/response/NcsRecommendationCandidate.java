@@ -17,30 +17,7 @@ public record NcsRecommendationCandidate(
         @Schema(description = "해당 직무를 추천한 이유")
         String reason,
 
-        @Schema(description = "추천 이유에 대한 근거 데이터")
-        List<Evidence> reasonEvidence
+        @Schema(description = "추천 근거 목록 (이력서나 진단 결과에서 추출된 구체적인 증거)")
+        List<Evidence> evidenceList
 ) {
-  @Schema(description = "근거 데이터")
-  public record Evidence(
-          @Schema(description = "근거 내용", example = "React 프로젝트 3개 이상 경험")
-          String content,
-
-          @Schema(description = "근거 데이터의 출처")
-          Source source
-  ) {
-  }
-
-  @Schema(description = "근거 데이터 출처")
-  public record Source(
-          @Schema(description = "출처 유형", example = "PROJECT",
-                  allowableValues = {"PROJECT", "EDUCATION", "CERTIFICATION", "EXPERIENCE", "SKILL"})
-          String type,
-
-          @Schema(description = "출처 식별자", example = "project-456")
-          String id,
-
-          @Schema(description = "출처 제목", example = "전자상거래 플랫폼 개발")
-          String title
-  ) {
-  }
 }
