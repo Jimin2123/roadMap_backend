@@ -2,7 +2,6 @@ package com.shingu.roadmap.member.dto.response;
 
 import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationDto;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobDto;
-import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -16,6 +15,9 @@ public record ProfileResponse(
         @Schema(description = "학력", example = "College")
         String educationLevel,
 
+        @Schema(description = "프로필 이미지 URL", example = "https://example.com/profile.jpg")
+        String profileImageUrl,
+
         @Schema(description = "추천 직업 정보 - 직업 분류 코드", example = "A01")
         String recommendedJobInfoCategoryCode,
 
@@ -27,9 +29,6 @@ public record ProfileResponse(
 
         @Schema(description = "희망 직무 목록")
         Set<SaraminJobDto> desiredJob,
-
-        @Schema(description = "자격증 목록")
-        Set<CertificateDTO> certificates,
 
         @Schema(description = "보유 기술 목록")
         Set<ProfileSkillDTO> skills,
@@ -49,14 +48,12 @@ public record ProfileResponse(
                 // 아래 스트림은 컬렉션이 @Builder.Default 로 초기화되어 있어 NPE 안전.
                 return new ProfileResponse(
                         profile.getEducationLevel(),
+                        profile.getProfileImageUrl(),
                         profile.getRecommendedJobInfoCategoryCode(),
                         profile.getRecommendedJobInfoAbilityCode(),
                         profile.getRecommendedEncyclopediaThemeCode(),
                         profile.getDesiredJobs().stream()
                                 .map(SaraminJobDto::from)
-                                .collect(Collectors.toSet()),
-                        profile.getProfileCertificates().stream()
-                                .map(CertificateDTO::from)
                                 .collect(Collectors.toSet()),
                         profile.getProfileSkills().stream()
                                 .map(ProfileSkillDTO::from)

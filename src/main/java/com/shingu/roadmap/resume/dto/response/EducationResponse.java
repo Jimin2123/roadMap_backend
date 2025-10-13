@@ -5,6 +5,7 @@ import com.shingu.roadmap.resume.domain.Education;
 public record EducationResponse(
         String school,
         String major,
+        Double gpa,
         PeriodResponse period,
         String status
 ) {
@@ -13,6 +14,7 @@ public record EducationResponse(
     return new EducationResponse(
             e.getSchool(),
             e.getMajor(),
+            e.getGpa(),
             PeriodResponse.from(e.getPeriod()),
             e.getStatus()
     );

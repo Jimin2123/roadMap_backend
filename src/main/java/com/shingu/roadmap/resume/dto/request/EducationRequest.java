@@ -16,6 +16,9 @@ public record EducationRequest(
         @Size(max = 100, message = "전공은 100자를 초과할 수 없습니다.")
         String major,
 
+        @Schema(description = "학점", example = "3.5")
+        Double gpa,
+
         @Schema(description = "재학 기간", example = "{\"startDate\":\"2019-03-01\",\"endDate\":\"2023-02-28\"}")
         @Valid
         PeriodRequest period,

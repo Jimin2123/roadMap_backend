@@ -21,7 +21,6 @@ import java.util.Set;
         name = "Profile.graph.forResponse",
         attributeNodes = {
                 @NamedAttributeNode("desiredJobs"),
-                @NamedAttributeNode("profileCertificates"),
                 @NamedAttributeNode("profileSkills"),
                 @NamedAttributeNode("desiredCapabilities"),
                 @NamedAttributeNode("userCapabilities"),
@@ -36,6 +35,9 @@ public class Profile {
 
   @Column(length = 100)
   private String educationLevel;
+
+  @Column(length = 500)
+  private String profileImageUrl;
 
   @Column(length = 64)
   private String recommendedJobInfoCategoryCode;
@@ -56,21 +58,16 @@ public class Profile {
   @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
           cascade = CascadeType.ALL, orphanRemoval = true)
   @Builder.Default
-  private Set<ProfileCertificate> profileCertificates = new HashSet<>();
-
-  @OneToMany(mappedBy = "profile", fetch = FetchType.LAZY,
-          cascade = CascadeType.ALL, orphanRemoval = true)
-  @Builder.Default
   private Set<ProfileSkill> profileSkills = new HashSet<>();
 
-  @ManyToMany(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+  @ManyToMany(fetch = FetchType.LAZY)
   @JoinTable(name = "profile_desired_ncs",
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "ncs_code"))
   @Builder.Default
   private Set<NcsOccupation> desiredCapabilities = new HashSet<>();
 
-  @ManyToMany(fetch = FetchType.LAZY, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+  @ManyToMany(fetch = FetchType.LAZY)
   @JoinTable(name = "profile_user_ncs",
           joinColumns = @JoinColumn(name = "profile_id"),
           inverseJoinColumns = @JoinColumn(name = "ncs_code"))
@@ -81,8 +78,39 @@ public class Profile {
   @JoinColumn(name = "resume_id")
   private Resume resume;
 
+  @OneToOne(mappedBy = "profile", fetch = FetchType.LAZY)
+  private Member member;
+
+  /* ===== 팩토리 메서드 ===== */
+
+  /**
+   * Profile 생성 팩토리 메서드.
+   * Profile은 Member와의 관계를 통해서만 존재해야 하므로, 고아 Profile 생성을 방지합니다.
+   *
+   * @return 새로운 Profile 인스턴스
+   */
+  public static Profile createProfile() {
+    return Profile.builder()
+            .desiredJobs(new HashSet<>())
+            .profileSkills(new HashSet<>())
+            .desiredCapabilities(new HashSet<>())
+            .userCapabilities(new HashSet<>())
+            .build();
+  }
+
   /* ===== 비즈니스 메서드 ===== */
+
+  /**
+   * Profile이 Member에 속해있는지 확인합니다.
+   *
+   * @return Member에 속해있으면 true, 아니면 false
+   */
+  public boolean isAttachedToMember() {
+    return this.member != null;
+  }
+
   public void updateEducationLevel(String v) { this.educationLevel = normalize(v); }
+  public void updateProfileImageUrl(String v) { this.profileImageUrl = normalize(v); }
   public void updateRecommendedJobInfoCategoryCode(String v) { this.recommendedJobInfoCategoryCode = normalize(v); }
   public void updateRecommendedJobInfoAbilityCode(String v) { this.recommendedJobInfoAbilityCode = normalize(v); }
   public void updateRecommendedEncyclopediaThemeCode(String v) { this.recommendedEncyclopediaThemeCode = normalize(v); }
@@ -100,20 +128,6 @@ public class Profile {
   public void removeUserCapability(NcsOccupation ncs) { if (ncs != null) this.userCapabilities.remove(ncs); }
 
   /* --- 양방향 일관성: 자식이 주인(mappedBy="profile")이므로 setProfile(this) 필요 --- */
-  public void addCertificate(ProfileCertificate pc) {
-    if (pc == null) return;
-    if (this.profileCertificates.add(pc)) {
-      if (!Objects.equals(pc.getProfile(), this)) pc.setProfile(this);
-    }
-  }
-
-  public void removeCertificate(ProfileCertificate pc) {
-    if (pc == null) return;
-    if (this.profileCertificates.remove(pc)) {
-      if (Objects.equals(pc.getProfile(), this)) pc.setProfile(null);
-    }
-  }
-
   public void addSkill(ProfileSkill ps) {
     if (ps == null) return;
     if (this.profileSkills.add(ps)) {

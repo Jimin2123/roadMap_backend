@@ -8,15 +8,29 @@ public record IntroductionResponse(
         @Schema(description = "자기소개 ID")
         Long id,
 
-        @Schema(description = "자기소개 내용")
-        String content
-) {
-    public static IntroductionResponse from(Introduction introduction) {
-        if (introduction == null) return null;
+        @Schema(description = "성장과정")
+        String growthProcess,
 
-        return new IntroductionResponse(
-                introduction.getId(),
-                introduction.getContent()
-        );
+        @Schema(description = "장점 및 강점")
+        String strengths,
+
+        @Schema(description = "학교생활")
+        String schoolLife,
+
+        @Schema(description = "지원동기")
+        String motivation
+) {
+  public static IntroductionResponse from(Introduction introduction) {
+    if (introduction == null) {
+      return null;
     }
+
+    return new IntroductionResponse(
+            introduction.getId(),
+            introduction.getGrowthProcess(),
+            introduction.getStrengths(),
+            introduction.getSchoolLife(),
+            introduction.getMotivation()
+    );
+  }
 }

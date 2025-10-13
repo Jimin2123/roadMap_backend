@@ -1,5 +1,6 @@
 package com.shingu.roadmap.resume.dto.response;
 
+import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.resume.domain.Activity;
 import com.shingu.roadmap.resume.domain.Project;
 import com.shingu.roadmap.resume.domain.Resume;
@@ -7,12 +8,16 @@ import com.shingu.roadmap.resume.domain.Resume;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public record ResumeResponse(
         IntroductionResponse introduction,
         EducationResponse education,
+        DesiredCompanyResponse desiredCompany,
         List<ActivityResponse> activities,
-        List<ProjectResponse> projects
+        List<ProjectResponse> projects,
+        Set<CertificateDTO> certificates
 ) {
   public static ResumeResponse from(Resume resume) {
     if (resume == null) return null;
@@ -37,11 +42,17 @@ public record ResumeResponse(
             .map(ProjectResponse::from)
             .toList();
 
+    Set<CertificateDTO> certificateDtos = resume.getCertificates().stream()
+            .map(CertificateDTO::from)
+            .collect(Collectors.toSet());
+
     return new ResumeResponse(
             IntroductionResponse.from(resume.getIntroduction()),
             EducationResponse.from(resume.getEducation()),
+            DesiredCompanyResponse.from(resume.getDesiredCompany()),
             activityDtos,
-            projectDtos
+            projectDtos,
+            certificateDtos
     );
   }
 }

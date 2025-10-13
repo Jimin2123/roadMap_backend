@@ -377,11 +377,11 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
                     .collect(Collectors.toList());
 
                 // 자격증 이름 (정렬하여 일관성 보장)
-                List<String> certificateNames = profile.getProfileCertificates().stream()
-                    .map(pc -> pc.getCertificate().getJmfldnm())
+                List<String> certificateNames = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+                    .map(rc -> rc.getCertificate().getJmfldnm())
                     .filter(Objects::nonNull)
                     .sorted()
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toList()) : Collections.emptyList();
 
                 // 희망 직무 코드
                 List<String> desiredJobCodes = profile.getDesiredJobs().stream()
@@ -477,8 +477,8 @@ public class OpenAiCacheKeyGenerator implements KeyGenerator {
                         .collect(Collectors.toSet()) :
                     Collections.emptySet();
 
-                Set<String> certificateNames = profileResponse.certificates() != null ?
-                    profileResponse.certificates().stream()
+                Set<String> certificateNames = profileResponse.resume() != null && profileResponse.resume().certificates() != null ?
+                    profileResponse.resume().certificates().stream()
                         .map(cert -> cert.name())
                         .filter(Objects::nonNull)
                         .collect(Collectors.toSet()) :

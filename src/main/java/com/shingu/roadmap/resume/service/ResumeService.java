@@ -1,10 +1,13 @@
 package com.shingu.roadmap.resume.service;
 
+import com.shingu.roadmap.common.domain.Certificate;
 import com.shingu.roadmap.common.domain.Skill;
+import com.shingu.roadmap.common.repository.CertificateRepository;
 import com.shingu.roadmap.common.repository.SkillRepository;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
+import com.shingu.roadmap.member.exception.CertificateNotFoundException;
 import com.shingu.roadmap.member.service.MemberService;
 import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.resume.dto.request.*;
@@ -24,6 +27,7 @@ public class ResumeService {
 
   private final MemberService memberService;
   private final SkillRepository skillRepository;
+  private final CertificateRepository certificateRepository;
 
   /* ============================ Commands ============================ */
 
@@ -41,11 +45,17 @@ public class ResumeService {
     if (resumeReq.introduction() != null) {
       resume.setIntroduction(toIntroduction(resumeReq.introduction()));
     }
+
     if (resumeReq.education() != null) {
       resume.setEducation(toEducation(resumeReq.education()));
     }
 
-    // 3) Activities / Projects 조립 (양방향은 Resume 편의 메서드로만 연결)
+    // 3) DesiredCompany 세팅 (단방향 1:1)
+    if (resumeReq.desiredCompany() != null) {
+      resume.setDesiredCompany(toDesiredCompany(resumeReq.desiredCompany()));
+    }
+
+    // 4) Activities / Projects / Careers 조립 (양방향은 Resume 편의 메서드로만 연결)
     if (!CollectionUtils.isEmpty(resumeReq.activities())) {
       for (ActivityRequest aReq : resumeReq.activities()) {
         Activity a = toActivity(aReq);
@@ -61,7 +71,22 @@ public class ResumeService {
       }
     }
 
-    // 4) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
+    if (!CollectionUtils.isEmpty(resumeReq.careers())) {
+      for (CareerRequest cReq : resumeReq.careers()) {
+        Career c = toCareer(cReq);
+        resume.addCareer(c);                     // 내부에서 setResumeInternal 처리
+      }
+    }
+
+    // 5) Certificates 조립
+    if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
+      for (var certReq : resumeReq.certificates()) {
+        ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());
+        resume.addCertificate(rc);
+      }
+    }
+
+    // 5) MemberService로 위임하여 Profile에 Resume 장착 및 전체 저장
     try {
       return memberService.updateProfile(memberId, request, resume);
     } catch (Exception e) {
@@ -99,6 +124,12 @@ public class ResumeService {
       resume.clearEducation();
     }
 
+    if (resumeReq.desiredCompany() != null) {
+      resume.setDesiredCompany(toDesiredCompany(resumeReq.desiredCompany()));
+    } else {
+      resume.clearDesiredCompany();
+    }
+
     // Activities / Projects 업데이트 (기존 데이터 클리어 후 새로 추가)
     resume.getActivities().clear();
     if (!CollectionUtils.isEmpty(resumeReq.activities())) {
@@ -114,6 +145,23 @@ public class ResumeService {
         Project p = toProjectSkeleton(pReq);
         attachProjectExtras(p, pReq);
         resume.addProject(p);
+      }
+    }
+
+    resume.getCareers().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.careers())) {
+      for (CareerRequest cReq : resumeReq.careers()) {
+        Career c = toCareer(cReq);
+        resume.addCareer(c);
+      }
+    }
+
+    // Certificates 업데이트
+    resume.getCertificates().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
+      for (var certReq : resumeReq.certificates()) {
+        ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());
+        resume.addCertificate(rc);
       }
     }
 
@@ -142,10 +190,29 @@ public class ResumeService {
 
   /* ============================ Mappers ============================ */
 
+  private DesiredCompany toDesiredCompany(DesiredCompanyRequest dto) {
+    if (dto == null) return null;
+    return DesiredCompany.builder()
+            .desiredCompany1(dto.desiredCompany1())
+            .desiredCompany2(dto.desiredCompany2())
+            .desiredRegion(dto.desiredRegion())
+            .salaryType(dto.salaryType())
+            .desiredSalary(dto.desiredSalary())
+            .careerPlan(dto.careerPlan())
+            .build();
+  }
+
   private Introduction toIntroduction(IntroductionRequest dto) {
-    // 도메인은 updateContent도 있지만 최초 생성은 builder 사용
+    if (dto == null) {
+      return null; // DTO가 null이면 null을 반환
+    }
+
+    // 각 필드를 DTO로부터 받아와 빌더를 통해 엔티티를 생성
     return Introduction.builder()
-            .content(dto != null ? dto.content() : null)
+            .growthProcess(dto.growthProcess())
+            .strengths(dto.strengths())
+            .schoolLife(dto.schoolLife())
+            .motivation(dto.motivation())
             .build();
   }
 
@@ -154,6 +221,7 @@ public class ResumeService {
     return Education.builder()
             .school(dto.school())
             .major(dto.major())
+            .gpa(dto.gpa())
             .status(dto.status())
             .period(toPeriod(dto.period()))
             .build();
@@ -213,6 +281,22 @@ public class ResumeService {
   private Skill findOrCreateSkill(String skillName) {
     return skillRepository.findByName(skillName)
             .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build()));
+  }
+
+  private ResumeCertificate resumeCertificateOf(Resume resume, String certName, String year) {
+    Certificate cert = certificateRepository.findByJmfldnm(certName)
+            .orElseThrow(() -> new CertificateNotFoundException(certName));
+    return ResumeCertificate.of(resume, cert, year);
+  }
+
+  private Career toCareer(CareerRequest dto) {
+    if (dto == null) return null;
+    return Career.builder()
+            .companyName(CompanyName.of(dto.companyName()))
+            .period(toPeriod(dto.period()))
+            .department(dto.department())
+            .description(dto.description())
+            .build();
   }
 
   private Period toPeriod(PeriodRequest dto) {

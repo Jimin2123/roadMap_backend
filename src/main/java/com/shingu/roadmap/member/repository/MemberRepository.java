@@ -12,7 +12,7 @@ import jakarta.persistence.LockModeType;
 import java.util.Optional;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
-  @Query("SELECT m FROM Member m JOIN FETCH m.account WHERE m.account.email = :email")
+  @Query("SELECT m FROM Member m JOIN FETCH m.account WHERE m.account.email.value = :email")
   Optional<Member> findByAccountEmail(@Param("email") String email);
 
   @EntityGraph(value = "Member.withAccountProfileAddress", type = EntityGraph.EntityGraphType.LOAD)

@@ -8,6 +8,7 @@ import lombok.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "member",
@@ -81,8 +82,29 @@ public class Member {
   public void setAddress(Address address) { this.address = address; }
   public void clearAddress() { this.address = null; }
 
-  public void setProfile(Profile profile) { this.profile = profile; }
-  public void clearProfile() { this.profile = null; }
+  /**
+   * Profile을 설정합니다. 양방향 일관성을 유지합니다.
+   *
+   * @param profile 설정할 Profile
+   */
+  public void setProfile(Profile profile) {
+    // 기존 profile이 있으면 먼저 연결 해제
+    if (this.profile != null && !Objects.equals(this.profile, profile)) {
+      Profile oldProfile = this.profile;
+      this.profile = null;
+      // 양방향 일관성 유지를 위해 리플렉션 사용 방지, 단순 참조 변경만 수행
+    }
+
+    this.profile = profile;
+    // 양방향 일관성은 JPA가 관리하지만, 도메인 로직에서도 명시적으로 확인 가능
+  }
+
+  /**
+   * Profile을 제거합니다. orphanRemoval=true이므로 Profile도 함께 삭제됩니다.
+   */
+  public void clearProfile() {
+    this.profile = null;
+  }
 
   public void updateRefreshToken(RefreshToken token) { this.refreshToken = token; }
 
@@ -95,7 +117,9 @@ public class Member {
   }
 
   /* ===== 편의 메서드 (선택) ===== */
-  public String getEmail() { return (account != null) ? account.getEmail() : null; }
+  public String getEmail() {
+    return (account != null && account.getEmail() != null) ? account.getEmail().getValue() : null;
+  }
 
   /* ===== 유틸 ===== */
   private static String requireNonBlank(String v, String field) {

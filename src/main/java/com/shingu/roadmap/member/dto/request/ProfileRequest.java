@@ -1,6 +1,5 @@
 package com.shingu.roadmap.member.dto.request;
 
-import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.common.enums.EducationLevelType;
 import com.shingu.roadmap.resume.dto.request.ResumeRequest;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
@@ -24,15 +23,14 @@ public record ProfileRequest(
         @Schema(description = "학력", example = "ASSOCIATE_DEGREE", implementation = EducationLevelType.class)
         EducationLevelType educationLevel,
 
+        @Schema(description = "프로필 이미지 URL", example = "https://example.com/profile.jpg")
+        @Size(max = 500, message = "프로필 이미지 URL은 500자를 초과할 수 없습니다")
+        String profileImageUrl,
+
         @ArraySchema(schema = @Schema(description = "보유 기술 목록", implementation = SkillRequest.class))
         @Size(max = 50, message = "기술은 최대 50개까지 등록 가능합니다")
         @Valid
         Set<SkillRequest> skills,
-
-        @ArraySchema(schema = @Schema(description = "자격증", implementation = CertificateDTO.class))
-        @Size(max = 30, message = "자격증은 최대 30개까지 등록 가능합니다")
-        @Valid
-        Set<CertificateDTO> certificates,
 
         @Schema(description = "이력서 정보", implementation = ResumeRequest.class)
         @Valid

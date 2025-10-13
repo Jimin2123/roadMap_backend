@@ -68,7 +68,7 @@ public class AuthService {
     // 4) JWT 페이로드 구성
     TokenPayload payload = new TokenPayload(
             member.getId(),
-            member.getAccount().getEmail(),
+            member.getAccount().getEmail().getValue(),
             member.getName(),
             member.getRole()
     );

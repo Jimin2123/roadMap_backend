@@ -20,6 +20,9 @@ public class Education {
   @Column(length = 200)
   private String major; // 전공
 
+  @Column
+  private Double gpa; // 학점 (예: 3.5)
+
   @Embedded
   private Period period; // 재학 기간
 
