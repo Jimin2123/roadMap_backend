@@ -1,5 +1,6 @@
-package com.shingu.roadmap.diagnosis.dto.response;
+package com.shingu.roadmap.diagnosis.dto;
 
+import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
@@ -18,6 +19,9 @@ public record NcsRecommendationCandidate(
         String reason,
 
         @Schema(description = "추천 근거 목록 (이력서나 진단 결과에서 추출된 구체적인 증거)")
-        List<Evidence> evidenceList
+        List<Evidence> evidenceList,
+
+        @Schema(description = "해당 NCS 직무에 대한 KSA 역량 분석 결과 (선택적)")
+        KsaAnalysisResponse ksaAnalysis
 ) {
 }

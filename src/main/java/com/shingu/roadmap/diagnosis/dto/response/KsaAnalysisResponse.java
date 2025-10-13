@@ -1,5 +1,6 @@
 package com.shingu.roadmap.diagnosis.dto.response;
 
+import com.shingu.roadmap.diagnosis.dto.Evidence;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
@@ -31,11 +32,20 @@ public record KsaAnalysisResponse(
             @Schema(description = "항목 상세 설명")
             String itemDescription,
 
-            @Schema(description = "사용자 보유 수준", example = "ADEQUATE")
-            String userLevel,
+            @Schema(description = "사용자 보유 수준 점수 (0.0 ~ 1.0)", example = "0.75")
+            Double userScore,
 
-            @Schema(description = "목표 수준 대비 부족한 부분")
-            String gap,
+            @Schema(description = "목표 수준 점수 (0.0 ~ 1.0)", example = "0.85")
+            Double targetScore,
+
+            @Schema(description = "점수 갭 (targetScore - userScore)", example = "0.10")
+            Double scoreGap,
+
+            @Schema(description = "수준 평가 (정성적)", example = "ADEQUATE")
+            String levelAssessment,
+
+            @Schema(description = "목표 수준 대비 부족한 부분 (정성적 설명)")
+            String gapDescription,
 
             @Schema(description = "역량 강화를 위한 추천 방안")
             String recommendation

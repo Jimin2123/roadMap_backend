@@ -1,5 +1,6 @@
 package com.shingu.roadmap.diagnosis.dto.response;
 
+import com.shingu.roadmap.diagnosis.dto.NcsRecommendationCandidate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
