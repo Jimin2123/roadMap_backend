@@ -74,21 +74,9 @@ public class MemberService {
         // 기존 프로필 조립
         Profile profile = assembleProfile(req, resume);
 
-        // 스킬/희망직무/NCS 역량 보강
+        // 스킬/희망직무 보강
         enrichWithSkills(req, profile);
         enrichWithDesiredJobs(req, profile);
-        recommendCapabilities(profile);
-
-        // AI
-        openAiService.recommendSearchCodes(profile)
-                .timeout(Duration.ofSeconds(8))
-                .onErrorResume(e -> Mono.empty())
-                .blockOptional()
-                .ifPresent(codes -> {
-                    profile.updateRecommendedJobInfoCategoryCode(codes.get("jobInfoCategoryCode"));
-                    profile.updateRecommendedJobInfoAbilityCode(codes.get("jobInfoAbilityCode")); // ← abilities에서 선택
-                    profile.updateRecommendedEncyclopediaThemeCode(codes.get("encyclopediaThemeCode"));
-                });
 
         member.setProfile(profile);
         return MemberResponse.from(member);
