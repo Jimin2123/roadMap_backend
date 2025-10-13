@@ -32,7 +32,9 @@ public record MemberResponse(
                 if (member == null) return null;
 
                 // account는 optional=false지만, 방어적으로 null-safe
-                final String email = (member.getAccount() != null) ? member.getAccount().getEmail() : null;
+                final String email = (member.getAccount() != null && member.getAccount().getEmail() != null)
+                        ? member.getAccount().getEmail().getValue()
+                        : null;
 
                 return new MemberResponse(
                         member.getId(),

@@ -1,5 +1,6 @@
 package com.shingu.roadmap.auth.domain;
 
+import com.shingu.roadmap.member.domain.Email;
 import com.shingu.roadmap.member.domain.Member;
 import jakarta.persistence.*;
 import lombok.*;
@@ -25,8 +26,8 @@ public class Account {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(nullable = false, unique = true, length = 100)
-  private String email;
+  @Embedded
+  private Email email;
 
   @Column(nullable = false, length = 100)
   private String password; // 해시 보관 가정
@@ -47,7 +48,7 @@ public class Account {
 
   /** 이메일 변경 (중복/형식 검증은 도메인外 정책에서 수행) */
   public void changeEmail(String newEmail) {
-    this.email = requireNonBlank(newEmail, "email");
+    this.email = Email.of(newEmail);
   }
 
   /** 비밀번호(해시) 변경 */

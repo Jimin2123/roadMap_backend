@@ -12,6 +12,7 @@ import com.shingu.roadmap.common.domain.Skill;
 import com.shingu.roadmap.common.enums.MemberRole;
 import com.shingu.roadmap.common.repository.CertificateRepository;
 import com.shingu.roadmap.common.repository.SkillRepository;
+import com.shingu.roadmap.member.domain.Email;
 import com.shingu.roadmap.member.domain.*;
 import com.shingu.roadmap.member.dto.request.AddressRequest;
 import com.shingu.roadmap.member.dto.request.MemberRequest;
@@ -128,7 +129,7 @@ public class MemberService {
 
     private Account createAccount(LoginRequest req) {
         return Account.builder()
-                .email(req.email())
+                .email(Email.of(req.email()))
                 .password(passwordEncoder.encode(req.password()))
                 .build();
     }
