@@ -22,6 +22,7 @@ import java.util.Set;
                 @NamedAttributeNode("education"),
                 @NamedAttributeNode("activities"),
                 @NamedAttributeNode("projects"),
+                @NamedAttributeNode("careers"),
                 @NamedAttributeNode("certificates")
         }
 )
@@ -46,6 +47,12 @@ public class Resume {
   @OrderBy("id ASC")
   @Builder.Default
   private List<Project> projects = new ArrayList<>();
+
+  @OneToMany(mappedBy = "resume", fetch = FetchType.LAZY,
+          cascade = CascadeType.ALL, orphanRemoval = true)
+  @OrderBy("id ASC")
+  @Builder.Default
+  private List<Career> careers = new ArrayList<>();
 
   @OneToOne(fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "education_id",
@@ -111,6 +118,21 @@ public class Resume {
     if (p == null) return;
     if (this.projects.remove(p)) {
       p.setResumeInternal(null);
+    }
+  }
+
+  public void addCareer(Career c) {
+    if (c == null) return;
+    if (!Objects.equals(c.getResume(), this)) {
+      c.setResumeInternal(this);
+    }
+    this.careers.add(c);
+  }
+
+  public void removeCareer(Career c) {
+    if (c == null) return;
+    if (this.careers.remove(c)) {
+      c.setResumeInternal(null);
     }
   }
 

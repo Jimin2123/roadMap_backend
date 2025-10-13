@@ -26,6 +26,11 @@ public record ResumeRequest(
         @Valid
         List<ProjectRequest> projects,
 
+        @ArraySchema(schema = @Schema(description = "경력사항 목록", implementation = CareerRequest.class))
+        @Size(max = 20, message = "경력사항은 최대 20개까지 등록 가능합니다")
+        @Valid
+        List<CareerRequest> careers,
+
         @Schema(description = "학력 정보 목록", implementation = EducationRequest.class)
         @Valid
         EducationRequest education,

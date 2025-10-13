@@ -42,6 +42,10 @@ public class ResumeService {
     Resume resume = Resume.builder().build();
 
     // 2) Introduction / Education 세팅 (단방향 1:1)
+    if (resumeReq.introduction() != null) {
+      resume.setIntroduction(toIntroduction(resumeReq.introduction()));
+    }
+
     if (resumeReq.education() != null) {
       resume.setEducation(toEducation(resumeReq.education()));
     }
@@ -51,7 +55,7 @@ public class ResumeService {
       resume.setDesiredCompany(toDesiredCompany(resumeReq.desiredCompany()));
     }
 
-    // 3) Activities / Projects 조립 (양방향은 Resume 편의 메서드로만 연결)
+    // 4) Activities / Projects / Careers 조립 (양방향은 Resume 편의 메서드로만 연결)
     if (!CollectionUtils.isEmpty(resumeReq.activities())) {
       for (ActivityRequest aReq : resumeReq.activities()) {
         Activity a = toActivity(aReq);
@@ -67,7 +71,14 @@ public class ResumeService {
       }
     }
 
-    // 4) Certificates 조립
+    if (!CollectionUtils.isEmpty(resumeReq.careers())) {
+      for (CareerRequest cReq : resumeReq.careers()) {
+        Career c = toCareer(cReq);
+        resume.addCareer(c);                     // 내부에서 setResumeInternal 처리
+      }
+    }
+
+    // 5) Certificates 조립
     if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
       for (var certReq : resumeReq.certificates()) {
         ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());
@@ -134,6 +145,14 @@ public class ResumeService {
         Project p = toProjectSkeleton(pReq);
         attachProjectExtras(p, pReq);
         resume.addProject(p);
+      }
+    }
+
+    resume.getCareers().clear();
+    if (!CollectionUtils.isEmpty(resumeReq.careers())) {
+      for (CareerRequest cReq : resumeReq.careers()) {
+        Career c = toCareer(cReq);
+        resume.addCareer(c);
       }
     }
 
@@ -268,6 +287,16 @@ public class ResumeService {
     Certificate cert = certificateRepository.findByJmfldnm(certName)
             .orElseThrow(() -> new CertificateNotFoundException(certName));
     return ResumeCertificate.of(resume, cert, year);
+  }
+
+  private Career toCareer(CareerRequest dto) {
+    if (dto == null) return null;
+    return Career.builder()
+            .companyName(CompanyName.of(dto.companyName()))
+            .period(toPeriod(dto.period()))
+            .department(dto.department())
+            .description(dto.description())
+            .build();
   }
 
   private Period toPeriod(PeriodRequest dto) {
