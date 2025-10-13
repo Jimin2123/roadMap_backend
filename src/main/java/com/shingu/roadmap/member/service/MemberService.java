@@ -136,6 +136,7 @@ public class MemberService {
     private Profile assembleProfile(ProfileRequest req, Resume resume) {
         return Profile.builder()
                 .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
+                .profileImageUrl(req.profileImageUrl())
                 .desiredJobs(new HashSet<>())
                 .profileSkills(new HashSet<>())
                 .desiredCapabilities(new HashSet<>())

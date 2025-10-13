@@ -15,6 +15,9 @@ public record ProfileResponse(
         @Schema(description = "학력", example = "College")
         String educationLevel,
 
+        @Schema(description = "프로필 이미지 URL", example = "https://example.com/profile.jpg")
+        String profileImageUrl,
+
         @Schema(description = "추천 직업 정보 - 직업 분류 코드", example = "A01")
         String recommendedJobInfoCategoryCode,
 
@@ -45,6 +48,7 @@ public record ProfileResponse(
                 // 아래 스트림은 컬렉션이 @Builder.Default 로 초기화되어 있어 NPE 안전.
                 return new ProfileResponse(
                         profile.getEducationLevel(),
+                        profile.getProfileImageUrl(),
                         profile.getRecommendedJobInfoCategoryCode(),
                         profile.getRecommendedJobInfoAbilityCode(),
                         profile.getRecommendedEncyclopediaThemeCode(),

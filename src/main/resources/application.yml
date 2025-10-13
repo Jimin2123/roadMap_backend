@@ -19,6 +19,12 @@ spring:
 server:
   port: 8080
 
+# 파일 업로드 설정
+file:
+  upload:
+    path: uploads/images # 이미지 파일 저장 경로
+    base-url: http://localhost:8080 # 이미지 URL 생성을 위한 기본 URL
+
 logging:
   level:
     root: INFO # 전체 로그 레벨을 INFO로 설정

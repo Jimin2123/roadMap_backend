@@ -36,6 +36,9 @@ public class Profile {
   @Column(length = 100)
   private String educationLevel;
 
+  @Column(length = 500)
+  private String profileImageUrl;
+
   @Column(length = 64)
   private String recommendedJobInfoCategoryCode;
 
@@ -107,6 +110,7 @@ public class Profile {
   }
 
   public void updateEducationLevel(String v) { this.educationLevel = normalize(v); }
+  public void updateProfileImageUrl(String v) { this.profileImageUrl = normalize(v); }
   public void updateRecommendedJobInfoCategoryCode(String v) { this.recommendedJobInfoCategoryCode = normalize(v); }
   public void updateRecommendedJobInfoAbilityCode(String v) { this.recommendedJobInfoAbilityCode = normalize(v); }
   public void updateRecommendedEncyclopediaThemeCode(String v) { this.recommendedEncyclopediaThemeCode = normalize(v); }
