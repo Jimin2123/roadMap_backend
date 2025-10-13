@@ -2,6 +2,7 @@ package com.shingu.roadmap.member.controller;
 
 import com.shingu.roadmap.member.dto.request.MemberRequest;
 import com.shingu.roadmap.member.dto.request.ProfileRequest;
+import com.shingu.roadmap.member.dto.request.ProfileUpdateRequest;
 import com.shingu.roadmap.member.dto.response.MemberResponse;
 import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.service.MemberService;
@@ -48,6 +49,18 @@ public class MemberController implements MemberControllerSwagger {
         Long memberId = userDetails.getMemberId();
 
         ProfileResponse response =  memberService.getProfile(memberId);
+        return ResponseEntity.ok(response);
+    }
+
+    @Override
+    @PutMapping("/api/v1/member/profile")
+    public ResponseEntity<ProfileResponse> updateProfile(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @Valid @RequestBody ProfileUpdateRequest request
+    ) {
+        Long memberId = userDetails.getMemberId();
+
+        ProfileResponse response = memberService.updateProfileOnly(memberId, request);
         return ResponseEntity.ok(response);
     }
 }

@@ -92,6 +92,54 @@ public class MemberService {
         return ProfileResponse.from(profile);
     }
 
+    /**
+     * 프로필 정보만 업데이트 (이력서 제외)
+     * - 기존 프로필이 있으면 업데이트하고, 없으면 새로 생성합니다.
+     * - 기존 이력서는 유지됩니다.
+     * - 전화번호와 주소도 함께 업데이트합니다.
+     */
+    public ProfileResponse updateProfileOnly(Long memberId, com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req) {
+        Member member = findMember(memberId);
+
+        // 전화번호 업데이트
+        if (req.phoneNumber() != null) {
+            member.changePhone(req.phoneNumber());
+        }
+
+        // 주소 업데이트
+        if (req.address() != null) {
+            Address newAddress = createAddress(req.address());
+            member.setAddress(newAddress);
+        }
+
+        // 기존 프로필 가져오기 또는 새로 생성
+        Profile profile = member.getProfile();
+        Resume existingResume = null;
+
+        if (profile != null) {
+            // 기존 프로필이 있으면 기존 이력서 보존
+            existingResume = profile.getResume();
+        }
+
+        // 새 프로필 조립 (기존 이력서 유지)
+        Profile newProfile = Profile.builder()
+                .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
+                .profileImageUrl(req.profileImageUrl())
+                .desiredJobs(new HashSet<>())
+                .profileSkills(new HashSet<>())
+                .desiredCapabilities(new HashSet<>())
+                .userCapabilities(new HashSet<>())
+                .resume(existingResume)
+                .build();
+
+        // 스킬/희망직무 보강
+        enrichWithSkillsForUpdate(req, newProfile);
+        enrichWithDesiredJobsForUpdate(req, newProfile);
+
+        member.setProfile(newProfile);
+        return ProfileResponse.from(newProfile);
+    }
+
     public Member findMemberById(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new MemberNotFoundException(memberId));
@@ -163,6 +211,29 @@ public class MemberService {
     }
 
     private void enrichWithDesiredJobs(ProfileRequest req, Profile profile) {
+        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
+
+        Set<SaraminJob> jobs = req.desiredJobCodes().stream()
+                .map(code -> saraminJobRepository.findById(code)
+                        .orElseThrow(() -> new JobCodeNotFoundException(String.valueOf(code))))
+                .collect(Collectors.toSet());
+        profile.getDesiredJobs().addAll(jobs);
+    }
+
+    private void enrichWithSkillsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req, Profile profile) {
+        profile.getProfileSkills().clear();
+        if (req == null || CollectionUtils.isEmpty(req.skills())) return;
+
+        for (var skillReq : req.skills()) {
+            Skill skill = skillRepository.findByName(skillReq.name())
+                    .orElseGet(() -> skillRepository.save(Skill.builder().name(skillReq.name()).build()));
+
+            ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
+            profile.addSkill(ps);
+        }
+    }
+
+    private void enrichWithDesiredJobsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req, Profile profile) {
         if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()

@@ -8,7 +8,6 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "주소 요청 DTO")
 public record AddressRequest(
         @Schema(description = "도로명 주소", example = "서울특별시 강남구 테헤란로 123")
-        @NotBlank(message = "주소는 필수입니다.")
         @Size(max = 200, message = "주소는 200자를 초과할 수 없습니다.")
         String address,
 

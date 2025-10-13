@@ -51,9 +51,27 @@ public interface MemberControllerSwagger {
                   @ApiResponse(
                           responseCode = "200",
                           description = "사용자 프로필 정보 조회 성공",
-                          content = @Content(schema = @Schema(implementation = MemberResponse.class))
+                          content = @Content(schema = @Schema(implementation = ProfileResponse.class))
                   ),
           }
   )
   ResponseEntity<ProfileResponse> getProfile(CustomUserDetails userDetails);
+
+  @SecurityRequirement(name = "bearerAuth")
+  @Operation(
+          summary = "프로필 정보 업데이트",
+          description = "프로필 정보만 업데이트합니다. (이력서 제외, 기존 이력서는 유지됩니다)",
+          responses = {
+                  @ApiResponse(
+                          responseCode = "200",
+                          description = "프로필 업데이트 성공",
+                          content = @Content(schema = @Schema(implementation = ProfileResponse.class))
+                  ),
+                  @ApiResponse(responseCode = "404", description = "회원을 찾을 수 없음")
+          }
+  )
+  ResponseEntity<ProfileResponse> updateProfile(
+          CustomUserDetails userDetails,
+          com.shingu.roadmap.member.dto.request.ProfileUpdateRequest request
+  );
 }
