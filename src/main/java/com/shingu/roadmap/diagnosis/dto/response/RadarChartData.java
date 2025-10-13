@@ -3,21 +3,15 @@ package com.shingu.roadmap.diagnosis.dto.response;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 
-@Schema(description = "레이더 차트 데이터 (목표 직무 vs 사용자 역량 비교)")
+@Schema(description = "레이더 차트 데이터 (사용자 역량 vs 여러 목표 NCS 직무 동시 비교)")
 public record RadarChartData(
-        @Schema(description = "목표 NCS 코드", example = "02010201")
-        String targetNcsCode,
+        @Schema(description = "사용자의 현재 역량 프로필")
+        CompetencyProfile userProfile,
 
-        @Schema(description = "목표 NCS 직무명", example = "응용 SW 엔지니어링")
-        String targetNcsName,
+        @Schema(description = "비교 대상 NCS 직무 역량 프로필 목록")
+        List<NcsCompetencyProfile> targetNcsProfiles,
 
-        @Schema(description = "각 역량별 점수 목록 (레이더 차트의 각 축)")
-        List<CompetencyScore> competencyScores,
-
-        @Schema(description = "전체 역량 일치율 (0.0 ~ 1.0)", example = "0.72")
-        Double overallMatchRate,
-
-        @Schema(description = "평균 갭 크기", example = "0.18")
-        Double averageGap
+        @Schema(description = "레이더 차트의 축으로 사용될 공통 역량 목록", example = "[\"프로그래밍 언어 활용\", \"데이터베이스 구축\", \"요구사항 분석\"]")
+        List<String> competencyAxes
 ) {
 }
