@@ -24,6 +24,9 @@ public record DiagnosisResultResponse(
         KsaAnalysisResponse ksaAnalysis,
 
         @Schema(description = "전체 분석에 대한 신뢰도 점수 (0.0 ~ 1.0)", example = "0.88")
-        Double confidenceScore
+        Double confidenceScore,
+
+        @Schema(description = "레이더 차트 데이터 (목표 직무 vs 사용자 역량 갭)")
+        RadarChartData radarChartData
 ) {
 }
