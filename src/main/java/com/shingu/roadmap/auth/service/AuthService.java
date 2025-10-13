@@ -97,31 +97,29 @@ public class AuthService {
    */
   @Transactional
   public LoginResponse refreshToken(String refreshToken) {
-    // 1) 토큰으로 멤버를 찾아 잠급니다. (동시성 제어)
+    // 1) 토큰으로 멤버를 찾아 잠급니다.
     Member member = memberRepository.findAndLockByRefreshToken_Token(refreshToken)
             .orElseThrow(() -> new InvalidRefreshTokenException("존재하지 않는 또는 이미 사용된 Refresh Token입니다."));
 
-    RefreshToken tokenEntity = member.getRefreshToken();
+    RefreshToken oldTokenEntity = member.getRefreshToken();
 
-    // 2) 토큰 유효성 검증 (null 체크 후 만료 체크)
-    if (tokenEntity == null) {
-      member.updateRefreshToken(null);
-      throw new ExpiredRefreshTokenException();
+    // 2) 토큰 유효성 검증
+    if (oldTokenEntity == null || oldTokenEntity.getExpiresAt().isBefore(Instant.now())) {
+        if (oldTokenEntity != null) {
+            member.updateRefreshToken(null);
+        }
+        throw new ExpiredRefreshTokenException();
     }
-    if (tokenEntity.getExpiresAt().isBefore(Instant.now())) {
-      member.updateRefreshToken(null);
-      throw new ExpiredRefreshTokenException();
-    }
-
-    // 3) JWT 무결성 및 유형(refresh) 검증
     if (!jwtUtil.isValidRefreshToken(refreshToken)) {
-      throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
+        throw new TokenIntegrityException("Refresh Token 무결성 검증 실패");
     }
 
-    // 4) 기존 토큰과의 연관관계를 끊습니다. (orphanRemoval=true에 의해 삭제 처리됨)
+    // 3) 명시적으로 이전 토큰과의 연관을 끊고 DB에서 삭제 후 즉시 반영합니다.
     member.updateRefreshToken(null);
+    refreshTokenRepository.delete(oldTokenEntity);
+    refreshTokenRepository.flush(); // DELETE 쿼리를 즉시 실행하여 순서 보장
 
-    // 5) 새로운 토큰 발급
+    // 4) 새로운 토큰 발급
     TokenPayload payload = new TokenPayload(
             member.getId(),
             member.getEmail(),
@@ -131,16 +129,15 @@ public class AuthService {
     String newAccessToken = jwtUtil.generateAccessToken(payload);
     String newRefreshToken = jwtUtil.generateRefreshToken(payload);
 
-    // 6) 새로운 RefreshToken 엔티티 생성 및 저장
+    // 5) 새로운 RefreshToken 엔티티 생성
     RefreshToken newTokenEntity = RefreshToken.builder()
             .token(newRefreshToken)
             .expiresAt(Instant.now().plus(REFRESH_LIFETIME_DAYS, ChronoUnit.DAYS))
             .build();
 
-    // 7) Member와 새로운 RefreshToken 연결
+    // 6) Member와 새로운 RefreshToken 연결 (CascadeType.ALL에 의해 newTokenEntity는 자동으로 저장됨)
     member.updateRefreshToken(newTokenEntity);
 
-    // 트랜잭션 종료 시 변경 감지에 의해 Member의 refreshToken 참조가 업데이트됨
     return new LoginResponse(newAccessToken, newRefreshToken);
   }
 
