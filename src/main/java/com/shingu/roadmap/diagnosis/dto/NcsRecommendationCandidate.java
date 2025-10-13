@@ -22,6 +22,9 @@ public record NcsRecommendationCandidate(
         List<Evidence> evidenceList,
 
         @Schema(description = "해당 NCS 직무에 대한 KSA 역량 분석 결과 (선택적)")
-        KsaAnalysisResponse ksaAnalysis
+        KsaAnalysisResponse ksaAnalysis,
+
+        @Schema(description = "커리어넷 직업 정보 (직업 상세 정보 보강용)")
+        CareerNetJobInfo careerNetJobInfo
 ) {
 }
