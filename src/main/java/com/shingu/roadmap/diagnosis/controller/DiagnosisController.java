@@ -87,16 +87,28 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
 
     /**
      * 최종 진단 결과 조회
+     * DB에 저장된 진단 결과를 조회합니다.
      */
     @Override
     @GetMapping("/api/v1/diagnosis/result/{id}")
     public ResponseEntity<DiagnosisResultResponse> getFinalDiagnosisResult(
             @PathVariable("id") Long diagnosisId
     ) {
-        // TODO: 진단 결과를 DB에 저장하고 조회하는 기능 구현 필요
-        // 현재는 임시로 NOT_IMPLEMENTED 반환
-        log.warn("Get diagnosis result not fully implemented yet for diagnosisId: {}", diagnosisId);
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+        try {
+            log.info("Fetching diagnosis result for diagnosisId: {}", diagnosisId);
+
+            DiagnosisResultResponse result = diagnosisService.findDiagnosisResult(diagnosisId);
+
+            return ResponseEntity.ok(result);
+
+        } catch (IllegalArgumentException e) {
+            log.warn("Diagnosis result not found for diagnosisId: {}", diagnosisId);
+            return ResponseEntity.notFound().build();
+
+        } catch (Exception e) {
+            log.error("Failed to fetch diagnosis result for diagnosisId: {}", diagnosisId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     /**

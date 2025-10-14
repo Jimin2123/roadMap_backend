@@ -1,9 +1,13 @@
 package com.shingu.roadmap.diagnosis.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisResult;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
+import com.shingu.roadmap.diagnosis.repository.DiagnosisResultRepository;
 import com.shingu.roadmap.diagnosis.service.pipeline.*;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
@@ -32,10 +36,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class DiagnosisService {
 
     private final MemberRepository memberRepository;
+    private final DiagnosisResultRepository diagnosisResultRepository;
     private final NcsRecommendationProcessor ncsRecommendationProcessor;
     private final CompetencyAnalysisProcessor competencyAnalysisProcessor;
     private final ReportGenerationProcessor reportGenerationProcessor;
     private final DiagnosisEmitterManager emitterManager;
+    private final ObjectMapper objectMapper;
 
     // 프로세서별 진행률 및 메시지 매핑
     private static final Map<String, ProcessorProgress> PROCESSOR_PROGRESS_MAP = Map.of(
@@ -225,7 +231,19 @@ public class DiagnosisService {
                 return;
             }
 
-            // 6. 완료 상태 전송
+            // 6. 진단 결과 DB에 저장
+            DiagnosisResultResponse diagnosisResult = context.getDiagnosisResultResponse();
+            if (diagnosisResult != null) {
+                try {
+                    saveDiagnosisResult(diagnosisResult);
+                    log.info("Diagnosis result saved to database for diagnosisId: {}", diagnosisId);
+                } catch (Exception e) {
+                    log.error("Failed to save diagnosis result to database for diagnosisId: {}", diagnosisId, e);
+                    // 저장 실패해도 진단 자체는 완료된 것으로 처리 (SSE는 정상 완료)
+                }
+            }
+
+            // 7. 완료 상태 전송
             log.info("Diagnosis completed successfully for diagnosisId: {}", diagnosisId);
             DiagnosisProgressResponse finalProgress = DiagnosisProgressResponse.builder()
                     .diagnosisId(diagnosisId)
@@ -301,5 +319,108 @@ public class DiagnosisService {
                 .currentMessage(message)
                 .build();
         emitterManager.sendProgress(diagnosisId, progress);
+    }
+
+    /**
+     * 진단 결과를 DB에 저장합니다.
+     *
+     * @param diagnosisResultResponse 진단 결과 응답 DTO
+     * @return 저장된 진단 결과 엔티티
+     */
+    @Transactional
+    public DiagnosisResult saveDiagnosisResult(DiagnosisResultResponse diagnosisResultResponse) {
+        log.info("Saving diagnosis result for diagnosisId: {}", diagnosisResultResponse.diagnosisId());
+
+        try {
+            // DiagnosisResultResponse를 JSON으로 직렬화
+            String resultJson = objectMapper.writeValueAsString(diagnosisResultResponse);
+
+            // 기존 진단 결과가 있는지 확인 (diagnosisId가 id와 같다고 가정)
+            DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisResultResponse.diagnosisId())
+                    .orElse(DiagnosisResult.builder()
+                            .memberId(diagnosisResultResponse.diagnosisId()) // TODO: diagnosisId를 memberId로 사용하는 것은 임시 방편
+                            .build());
+
+            // 진단 결과 업데이트
+            diagnosisResult.updateResult(
+                    DiagnosisStatus.COMPLETED,
+                    resultJson,
+                    diagnosisResultResponse.confidenceScore(),
+                    diagnosisResultResponse.summary()
+            );
+
+            // 저장
+            DiagnosisResult saved = diagnosisResultRepository.save(diagnosisResult);
+            log.info("Diagnosis result saved successfully with id: {}", saved.getId());
+
+            return saved;
+
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize DiagnosisResultResponse to JSON", e);
+            throw new RuntimeException("진단 결과 저장 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    /**
+     * 진단 ID로 진단 결과를 조회합니다.
+     *
+     * @param diagnosisId 진단 ID
+     * @return 진단 결과 응답 DTO
+     */
+    @Transactional(readOnly = true)
+    public DiagnosisResultResponse findDiagnosisResult(Long diagnosisId) {
+        log.info("Finding diagnosis result for diagnosisId: {}", diagnosisId);
+
+        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
+                .orElseThrow(() -> new IllegalArgumentException("진단 결과를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
+
+        // 삭제된 결과인 경우 예외 발생
+        if (diagnosisResult.isDeleted()) {
+            throw new IllegalArgumentException("삭제된 진단 결과입니다. diagnosisId: " + diagnosisId);
+        }
+
+        try {
+            // JSON을 DiagnosisResultResponse로 역직렬화
+            DiagnosisResultResponse response = objectMapper.readValue(
+                    diagnosisResult.getResultJson(),
+                    DiagnosisResultResponse.class
+            );
+
+            log.info("Diagnosis result found successfully for diagnosisId: {}", diagnosisId);
+            return response;
+
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize JSON to DiagnosisResultResponse", e);
+            throw new RuntimeException("진단 결과 조회 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    /**
+     * 회원 ID로 가장 최근 진단 결과를 조회합니다.
+     *
+     * @param memberId 회원 ID
+     * @return 가장 최근 진단 결과 응답 DTO
+     */
+    @Transactional(readOnly = true)
+    public DiagnosisResultResponse findLatestDiagnosisResultByMemberId(Long memberId) {
+        log.info("Finding latest diagnosis result for memberId: {}", memberId);
+
+        DiagnosisResult diagnosisResult = diagnosisResultRepository.findFirstByMemberIdOrderByCreatedAtDesc(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("진단 결과를 찾을 수 없습니다. memberId: " + memberId));
+
+        try {
+            // JSON을 DiagnosisResultResponse로 역직렬화
+            DiagnosisResultResponse response = objectMapper.readValue(
+                    diagnosisResult.getResultJson(),
+                    DiagnosisResultResponse.class
+            );
+
+            log.info("Latest diagnosis result found successfully for memberId: {}", memberId);
+            return response;
+
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize JSON to DiagnosisResultResponse", e);
+            throw new RuntimeException("진단 결과 조회 중 오류가 발생했습니다.", e);
+        }
     }
 }
