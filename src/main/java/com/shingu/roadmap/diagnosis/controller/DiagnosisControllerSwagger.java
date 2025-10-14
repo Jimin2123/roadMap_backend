@@ -31,6 +31,7 @@ public interface DiagnosisControllerSwagger {
             description = "진단 과정의 실시간 업데이트를 스트리밍 방식으로 제공합니다."
     )
     SseEmitter streamDiagnosisProgress(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @Parameter(description = "진단 ID") @PathVariable("id") Long diagnosisId
     );
 
@@ -39,6 +40,7 @@ public interface DiagnosisControllerSwagger {
             description = "진단이 완료된 후 최종 결과를 조회합니다."
     )
     ResponseEntity<DiagnosisResultResponse> getFinalDiagnosisResult(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @Parameter(description = "진단 ID") @PathVariable("id") Long diagnosisId
     );
 
@@ -47,6 +49,7 @@ public interface DiagnosisControllerSwagger {
             description = "AI의 신뢰도가 낮을 경우 사용자가 직접 직무를 선택하여 진단을 재개합니다. 비동기로 실행되며 SSE로 진행 상황을 확인할 수 있습니다."
     )
     ResponseEntity<DiagnosisProgressResponse> selectJobManually(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @Parameter(description = "진단 ID") @PathVariable("id") Long diagnosisId,
             @RequestBody JobConfirmationRequest request
     );

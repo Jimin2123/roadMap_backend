@@ -40,6 +40,15 @@ public interface DiagnosisResultRepository extends JpaRepository<DiagnosisResult
     List<DiagnosisResult> findByMemberIdAndStatus(Long memberId, DiagnosisStatus status);
 
     /**
+     * 회원 ID와 상태로 진행 중인 진단 조회 (단일 결과)
+     *
+     * @param memberId 회원 ID
+     * @param status 진단 상태
+     * @return 진행 중인 진단 (없으면 Optional.empty())
+     */
+    Optional<DiagnosisResult> findFirstByMemberIdAndStatus(Long memberId, DiagnosisStatus status);
+
+    /**
      * 특정 회원의 완료된 진단 결과 개수 조회
      *
      * @param memberId 회원 ID
