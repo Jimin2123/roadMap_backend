@@ -1,4 +1,4 @@
-package com.shingu.roadmap.diagnosis.dto;
+package com.shingu.roadmap.diagnosis.dto.common;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
