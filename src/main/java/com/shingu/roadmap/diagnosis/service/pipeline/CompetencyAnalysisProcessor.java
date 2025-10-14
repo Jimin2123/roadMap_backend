@@ -9,6 +9,9 @@ import com.shingu.roadmap.diagnosis.dto.common.EvidenceSourceType;
 import com.shingu.roadmap.diagnosis.dto.common.NcsRecommendationCandidate;
 import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
+import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.resume.domain.Project;
 import lombok.RequiredArgsConstructor;
@@ -59,7 +62,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             log.info("Analyzing competency for NCS code: {}", targetNcsCode);
 
             // 2-1. KSA 분석 수행
-            List<KsaAnalysisResponse> ksaAnalysisResponses = performKsaAnalysis(targetNcsCode, profile);
+            List<KsaAnalysisResponse> ksaAnalysisResponses = performKsaAnalysis(targetNcsCode, profile, context);
 
             if (ksaAnalysisResponses.isEmpty()) {
                 log.warn("Failed to perform KSA analysis for NCS code: {}", targetNcsCode);
@@ -68,12 +71,16 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                 return context;
             }
 
+            reportProgress(context, 63, "커리어 레벨을 진단하고 있습니다.");
+
             // 2-3. 커리어 레벨 진단
             String careerLevel = diagnoseCareerLevel(targetNcsCode, profile);
 
             context.setKsaAnalysisResponses(ksaAnalysisResponses);
             context.setCareerLevel(careerLevel);
             context.setSuccess(true);
+
+            reportProgress(context, 66, "역량 분석이 완료되었습니다.");
 
             log.info("[CompetencyAnalysisProcessor] Completed. Career level: {}", careerLevel);
 
@@ -114,10 +121,12 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
     /**
      * KSA 역량 분석 수행 (AI 기반)
      */
-    private List<KsaAnalysisResponse> performKsaAnalysis(String ncsCode, Profile profile) {
+    private List<KsaAnalysisResponse> performKsaAnalysis(String ncsCode, Profile profile, DiagnosisContext context) {
         List<KsaAnalysisResponse> responses = new ArrayList<>();
 
         try {
+            reportProgress(context, 33, "능력단위 정보를 조회하고 있습니다.");
+
             // 능력단위 코드 목록 조회 (임시 - 첫 번째 능력단위만 사용)
             var compUnitResponse = ncsApiService.getNcsCompUnit(ncsCode);
             if (compUnitResponse == null || compUnitResponse.data() == null || compUnitResponse.data().isEmpty()) {
@@ -127,12 +136,16 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
             String firstCompUnitCd = compUnitResponse.data().get(0).compUnitCd();
 
+            reportProgress(context, 38, "KSA 데이터를 조회하고 있습니다.");
+
             // KSA 데이터 조회
             NcsKsaResponse ksaResponse = ncsApiService.getNcsKsa(ncsCode, firstCompUnitCd);
             if (ksaResponse == null || ksaResponse.data() == null) {
                 log.warn("No KSA data found for NCS code: {}", ncsCode);
                 return responses;
             }
+
+            reportProgress(context, 43, "KSA 항목을 분류하고 있습니다.");
 
             // KSA 항목 분류
             List<NcsKsaResponse.NcsKsaItem> knowledgeRawItems = ksaResponse.data().stream()
@@ -148,14 +161,17 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                     .collect(Collectors.toList());
 
             // AI 기반 KSA 분석 수행
+            reportProgress(context, 43, "지식(Knowledge) 역량을 AI로 분석하고 있습니다.");
             List<KsaAnalysisResponse.KsaItem> knowledgeItems = analyzeKsaCategoryWithAi(
                     ncsCode, knowledgeRawItems, profile, "지식"
             );
 
+            reportProgress(context, 50, "기술(Skill) 역량을 AI로 분석하고 있습니다.");
             List<KsaAnalysisResponse.KsaItem> skillItems = analyzeKsaCategoryWithAi(
                     ncsCode, skillRawItems, profile, "기술"
             );
 
+            reportProgress(context, 57, "태도(Attitude) 역량을 AI로 분석하고 있습니다.");
             List<KsaAnalysisResponse.KsaItem> attitudeItems = analyzeKsaCategoryWithAi(
                     ncsCode, attitudeRawItems, profile, "태도"
             );
@@ -607,6 +623,24 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             return "중급 실무자";
         } else {
             return "중급 관리자";
+        }
+    }
+
+    /**
+     * 진행 상황을 SSE로 전송하는 헬퍼 메서드
+     */
+    private void reportProgress(DiagnosisContext context, int progressPercentage, String message) {
+        if (context.getProgressCallback() != null) {
+            DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
+                    .diagnosisId(context.getDiagnosisId())
+                    .currentStep(DiagnosisStep.JOB_MATCHING)
+                    .progressPercentage(progressPercentage)
+                    .status(DiagnosisStatus.IN_PROGRESS)
+                    .currentMessage(message)
+                    .build();
+
+            context.getProgressCallback().accept(progressResponse);
+            log.debug("Progress reported: {}% - {}", progressPercentage, message);
         }
     }
 

@@ -4,9 +4,12 @@ import com.shingu.roadmap.apis.ncs.dto.response.NcsCompUnitResponse;
 import com.shingu.roadmap.apis.ncs.dto.response.NcsOccupationResponse;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
 import com.shingu.roadmap.diagnosis.dto.common.Evidence;
 import com.shingu.roadmap.diagnosis.dto.common.EvidenceSourceType;
 import com.shingu.roadmap.diagnosis.dto.common.NcsRecommendationCandidate;
+import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
 import com.shingu.roadmap.member.domain.Profile;
 import lombok.RequiredArgsConstructor;
@@ -63,6 +66,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             }
 
             log.info("AI recommended {} NCS codes: {}", recommendedNcsCodes.size(), recommendedNcsCodes);
+            reportProgress(context, 10, "AI가 추천한 NCS 코드를 분석했습니다.");
 
             // 1-2. NCS API를 통한 유효성 검증 및 등록
             var validOccupations = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
@@ -74,12 +78,30 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                 return context;
             }
 
+            reportProgress(context, 20, "NCS 코드 유효성 검증이 완료되었습니다.");
+
             // 1-3. 능력단위 기반 교차 검증 및 후보 생성
-            List<NcsRecommendationCandidate> candidates = validOccupations.stream()
+            List<NcsRecommendationCandidate> candidates = new ArrayList<>();
+            var validOccupationsList = validOccupations.stream()
                     .limit(MAX_RECOMMENDATION_COUNT)
-                    .map(occupation -> buildCandidateWithCompUnitValidation(occupation.getDutyCd(), profile))
-                    .filter(Optional::isPresent)
-                    .map(Optional::get)
+                    .collect(Collectors.toList());
+
+            int totalOccupations = validOccupationsList.size();
+            int processedCount = 0;
+
+            for (var occupation : validOccupationsList) {
+                Optional<NcsRecommendationCandidate> candidate =
+                    buildCandidateWithCompUnitValidation(occupation.getDutyCd(), profile, context);
+                candidate.ifPresent(candidates::add);
+
+                processedCount++;
+                // 20% ~ 28% 범위에서 진행률 업데이트
+                int progress = 20 + (8 * processedCount / totalOccupations);
+                reportProgress(context, progress,
+                    String.format("직무 후보 검증 중... (%d/%d)", processedCount, totalOccupations));
+            }
+
+            candidates = candidates.stream()
                     .sorted(Comparator.comparing(NcsRecommendationCandidate::confidenceScore).reversed())
                     .collect(Collectors.toList());
 
@@ -89,6 +111,8 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                 context.setErrorMessage("직무 후보 생성에 실패했습니다.");
                 return context;
             }
+
+            reportProgress(context, 28, "신뢰도 평가를 시작합니다.");
 
             // 1-4. 신뢰도 기반 자동 선택 또는 사용자 선택 요청
             double overallConfidence = calculateOverallConfidence(candidates);
@@ -104,6 +128,8 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
 
             context.setNcsAnalysisResponse(ncsAnalysisResponse);
             context.setSuccess(true);
+
+            reportProgress(context, 33, "NCS 직무 추천이 완료되었습니다.");
 
             log.info("[NcsRecommendationProcessor] Completed. Confidence: {}, Requires user selection: {}",
                     overallConfidence, requiresUserSelection);
@@ -121,7 +147,8 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
     /**
      * 능력단위 API를 통한 교차 검증으로 NCS 후보 생성 (AI 기반 신뢰도 평가 포함)
      */
-    private Optional<NcsRecommendationCandidate> buildCandidateWithCompUnitValidation(String ncsCode, Profile profile) {
+    private Optional<NcsRecommendationCandidate> buildCandidateWithCompUnitValidation(
+            String ncsCode, Profile profile, DiagnosisContext context) {
         try {
             // NCS 직무 정보 조회
             NcsOccupationResponse occupationResponse = ncsApiService.fetchAndRegisterNcsOccupation(ncsCode)
@@ -359,6 +386,24 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                 .mapToDouble(NcsRecommendationCandidate::confidenceScore)
                 .average()
                 .orElse(0.0);
+    }
+
+    /**
+     * 진행 상황을 SSE로 전송하는 헬퍼 메서드
+     */
+    private void reportProgress(DiagnosisContext context, int progressPercentage, String message) {
+        if (context.getProgressCallback() != null) {
+            DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
+                    .diagnosisId(context.getDiagnosisId())
+                    .currentStep(DiagnosisStep.NCS_CODE_SUGGESTION)
+                    .progressPercentage(progressPercentage)
+                    .status(DiagnosisStatus.IN_PROGRESS)
+                    .currentMessage(message)
+                    .build();
+
+            context.getProgressCallback().accept(progressResponse);
+            log.debug("Progress reported: {}% - {}", progressPercentage, message);
+        }
     }
 
     @Override
