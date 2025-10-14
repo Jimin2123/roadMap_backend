@@ -44,9 +44,9 @@ public interface DiagnosisControllerSwagger {
 
     @Operation(
             summary = "(Human-in-the-loop) 사용자가 직접 직무 선택",
-            description = "사용자가 직접 직무를 선택할 수 있는 기능을 제공합니다."
+            description = "AI의 신뢰도가 낮을 경우 사용자가 직접 직무를 선택하여 진단을 재개합니다. 비동기로 실행되며 SSE로 진행 상황을 확인할 수 있습니다."
     )
-    ResponseEntity<Void> selectJobManually(
+    ResponseEntity<DiagnosisProgressResponse> selectJobManually(
             @Parameter(description = "진단 ID") @PathVariable("id") Long diagnosisId,
             @RequestBody JobConfirmationRequest request
     );

@@ -322,6 +322,27 @@ public class DiagnosisService {
     }
 
     /**
+     * 새로운 진단을 생성하고 진단 ID를 반환합니다.
+     *
+     * @param memberId 회원 ID
+     * @return 생성된 진단 ID
+     */
+    @Transactional
+    public Long createNewDiagnosis(Long memberId) {
+        log.info("Creating new diagnosis for memberId: {}", memberId);
+
+        DiagnosisResult diagnosis = DiagnosisResult.builder()
+                .memberId(memberId)
+                .status(DiagnosisStatus.PENDING)
+                .build();
+
+        DiagnosisResult saved = diagnosisResultRepository.save(diagnosis);
+        log.info("New diagnosis created with diagnosisId: {}", saved.getId());
+
+        return saved.getId();
+    }
+
+    /**
      * 진단 결과를 DB에 저장합니다.
      *
      * @param diagnosisResultResponse 진단 결과 응답 DTO
@@ -335,11 +356,10 @@ public class DiagnosisService {
             // DiagnosisResultResponse를 JSON으로 직렬화
             String resultJson = objectMapper.writeValueAsString(diagnosisResultResponse);
 
-            // 기존 진단 결과가 있는지 확인 (diagnosisId가 id와 같다고 가정)
+            // 기존 진단 결과 조회 (반드시 존재해야 함)
             DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisResultResponse.diagnosisId())
-                    .orElse(DiagnosisResult.builder()
-                            .memberId(diagnosisResultResponse.diagnosisId()) // TODO: diagnosisId를 memberId로 사용하는 것은 임시 방편
-                            .build());
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisResultResponse.diagnosisId()));
 
             // 진단 결과 업데이트
             diagnosisResult.updateResult(
@@ -421,6 +441,142 @@ public class DiagnosisService {
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize JSON to DiagnosisResultResponse", e);
             throw new RuntimeException("진단 결과 조회 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    /**
+     * 진단 ID로 회원 ID를 조회합니다.
+     *
+     * @param diagnosisId 진단 ID
+     * @return 회원 ID
+     */
+    @Transactional(readOnly = true)
+    public Long getMemberIdByDiagnosisId(Long diagnosisId) {
+        log.info("Finding memberId for diagnosisId: {}", diagnosisId);
+
+        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
+                .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
+
+        return diagnosisResult.getMemberId();
+    }
+
+    /**
+     * 진단 상태를 업데이트합니다.
+     *
+     * @param diagnosisId 진단 ID
+     * @param status 진단 상태
+     */
+    @Transactional
+    public void updateDiagnosisStatus(Long diagnosisId, DiagnosisStatus status) {
+        log.info("Updating diagnosis status for diagnosisId: {} to {}", diagnosisId, status);
+
+        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
+                .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
+
+        diagnosisResult.updateResult(status, diagnosisResult.getResultJson(),
+                diagnosisResult.getConfidenceScore(), diagnosisResult.getSummary());
+
+        diagnosisResultRepository.save(diagnosisResult);
+    }
+
+    /**
+     * 사용자 선택을 반영하여 진단을 비동기로 계속 진행합니다. (SSE 지원)
+     *
+     * @param diagnosisId 진단 ID
+     * @param selectedNcsCode 사용자가 선택한 NCS 코드
+     */
+    @Async("diagnosisTaskExecutor")
+    public void continueWithUserSelectionAsync(Long diagnosisId, String selectedNcsCode) {
+        log.info("Continuing diagnosis asynchronously for diagnosisId: {} with user selected NCS code: {}",
+                diagnosisId, selectedNcsCode);
+
+        try {
+            // 진단 ID로 회원 ID 조회
+            Long memberId = getMemberIdByDiagnosisId(diagnosisId);
+
+            // 진단 상태를 IN_PROGRESS로 변경
+            updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
+
+            // 초기 상태 전송
+            sendProgress(diagnosisId, DiagnosisStep.JOB_MATCHING, 33, DiagnosisStatus.IN_PROGRESS,
+                    "사용자 선택을 반영하여 진단을 계속합니다...");
+
+            // 1. 사용자 프로필 조회
+            Member member = memberRepository.findById(memberId)
+                    .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
+
+            Profile profile = member.getProfile();
+            if (profile == null) {
+                throw new IllegalArgumentException("Profile not found for memberId: " + memberId);
+            }
+
+            // 2. 진단 컨텍스트 초기화 (1단계는 건너뛰고 2단계부터 시작)
+            DiagnosisContext context = DiagnosisContext.builder()
+                    .memberId(memberId)
+                    .diagnosisId(diagnosisId)
+                    .profile(profile)
+                    .userSelectedNcsCode(selectedNcsCode)
+                    .success(true)
+                    .progressCallback(progress -> emitterManager.sendProgress(diagnosisId, progress))
+                    .build();
+
+            // 3. 2단계부터 파이프라인 실행
+            List<DiagnosisProcessor> processors = List.of(
+                    competencyAnalysisProcessor,
+                    reportGenerationProcessor
+            );
+
+            // 4. 파이프라인 실행 (진행 상황 전송 포함)
+            context = executePipelineWithProgress(processors, context);
+
+            // 5. 결과 확인 및 완료 처리
+            if (!context.isSuccess()) {
+                log.error("Diagnosis continuation failed for diagnosisId: {}, error: {}",
+                        diagnosisId, context.getErrorMessage());
+                DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
+                        .diagnosisId(diagnosisId)
+                        .status(DiagnosisStatus.FAILED)
+                        .currentStep(DiagnosisStep.FINAL_REPORT)
+                        .progressPercentage(100)
+                        .currentMessage("진단 중 오류가 발생했습니다: " + context.getErrorMessage())
+                        .build();
+                emitterManager.completeWithError(diagnosisId, errorProgress);
+                return;
+            }
+
+            // 6. 진단 결과 DB에 저장
+            DiagnosisResultResponse diagnosisResult = context.getDiagnosisResultResponse();
+            if (diagnosisResult != null) {
+                try {
+                    saveDiagnosisResult(diagnosisResult);
+                    log.info("Diagnosis result saved to database for diagnosisId: {}", diagnosisId);
+                } catch (Exception e) {
+                    log.error("Failed to save diagnosis result to database for diagnosisId: {}", diagnosisId, e);
+                    // 저장 실패해도 진단 자체는 완료된 것으로 처리 (SSE는 정상 완료)
+                }
+            }
+
+            // 7. 완료 상태 전송
+            log.info("Diagnosis continued and completed successfully for diagnosisId: {}", diagnosisId);
+            DiagnosisProgressResponse finalProgress = DiagnosisProgressResponse.builder()
+                    .diagnosisId(diagnosisId)
+                    .status(DiagnosisStatus.COMPLETED)
+                    .currentStep(DiagnosisStep.FINAL_REPORT)
+                    .progressPercentage(100)
+                    .currentMessage("진단이 완료되었습니다.")
+                    .build();
+            emitterManager.complete(diagnosisId, finalProgress);
+
+        } catch (Exception e) {
+            log.error("Unexpected error during async diagnosis continuation for diagnosisId: {}", diagnosisId, e);
+            DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
+                    .diagnosisId(diagnosisId)
+                    .status(DiagnosisStatus.FAILED)
+                    .currentStep(DiagnosisStep.FINAL_REPORT)
+                    .progressPercentage(100)
+                    .currentMessage("진단 중 예기치 않은 오류가 발생했습니다.")
+                    .build();
+            emitterManager.completeWithError(diagnosisId, errorProgress);
         }
     }
 }

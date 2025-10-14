@@ -44,8 +44,12 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             Long memberId = userDetails.getMemberId();
             log.info("Starting diagnosis for memberId: {}", memberId);
 
-            // 진단 ID 생성 (현재는 memberId 사용, 추후 별도 ID 생성 로직 추가 가능)
-            Long diagnosisId = memberId;
+            // 새 진단 생성 및 ID 발급
+            Long diagnosisId = diagnosisService.createNewDiagnosis(memberId);
+            log.info("New diagnosisId created: {}", diagnosisId);
+
+            // 진단 상태를 IN_PROGRESS로 변경
+            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
 
             // 비동기로 진단 실행
             diagnosisService.executeDiagnosisAsync(memberId, diagnosisId);
@@ -112,12 +116,13 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     }
 
     /**
-     * 사용자 직접 직무 선택
+     * 사용자 직접 직무 선택 (Human-in-the-loop)
      * AI의 신뢰도가 낮아 사용자가 직접 직무를 선택하는 경우
+     * 비동기로 진단을 재개하며, SSE를 통해 진행 상황을 확인할 수 있습니다.
      */
     @Override
     @PostMapping("/api/v1/diagnosis/{id}/job-confirmation")
-    public ResponseEntity<Void> selectJobManually(
+    public ResponseEntity<DiagnosisProgressResponse> selectJobManually(
             @PathVariable("id") Long diagnosisId,
             @RequestBody JobConfirmationRequest request
     ) {
@@ -125,18 +130,23 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             log.info("User manually selected NCS code: {} for diagnosisId: {}",
                     request.selectedNcsCode(), diagnosisId);
 
-            // TODO: diagnosisId를 memberId로 매핑하는 로직 필요
-            // 현재는 diagnosisId를 memberId로 사용 (임시)
-            Long memberId = diagnosisId;
+            // 진단 상태를 AWAITING_USER_INPUT에서 IN_PROGRESS로 변경
+            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
 
-            // 사용자 선택 기반으로 진단 계속 진행
-            DiagnosisResultResponse result = diagnosisService.continueWithUserSelection(
-                    memberId,
-                    request.selectedNcsCode()
-            );
+            // 비동기로 진단 재개 (SSE로 진행 상황 전송)
+            diagnosisService.continueWithUserSelectionAsync(diagnosisId, request.selectedNcsCode());
 
-            log.info("Diagnosis continued successfully with user selection");
-            return ResponseEntity.ok().build();
+            // 즉시 응답 반환 (진행 상황은 SSE로 확인)
+            DiagnosisProgressResponse progress = DiagnosisProgressResponse.builder()
+                    .diagnosisId(diagnosisId)
+                    .currentStep(DiagnosisStep.JOB_MATCHING)
+                    .status(DiagnosisStatus.IN_PROGRESS)
+                    .currentMessage("사용자 선택을 반영하여 진단을 재개합니다. SSE를 통해 진행 상황을 확인하세요.")
+                    .progressPercentage(33)
+                    .build();
+
+            log.info("Diagnosis continuation initiated successfully with user selection");
+            return ResponseEntity.accepted().body(progress);
 
         } catch (Exception e) {
             log.error("Failed to continue diagnosis with user selection: {}", e.getMessage(), e);
