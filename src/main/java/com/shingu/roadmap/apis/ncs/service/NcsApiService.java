@@ -149,6 +149,16 @@ public class NcsApiService {
   }
 
   /**
+   * NCS 직무 정보 조회
+   *
+   * @param ncsCode NCS 코드
+   * @return NCS 직무 응답 DTO
+   */
+  public NcsOccupationResponse getOccupation(String ncsCode) {
+    return ncsApiClient.getOccupation(ncsCode);
+  }
+
+  /**
    * NCS 직책 조회
    *
    * @param ncsCode NCS 코드
