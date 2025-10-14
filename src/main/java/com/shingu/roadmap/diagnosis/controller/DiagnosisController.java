@@ -9,6 +9,7 @@ import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
 import com.shingu.roadmap.diagnosis.service.DiagnosisEmitterManager;
 import com.shingu.roadmap.diagnosis.service.DiagnosisService;
 import com.shingu.roadmap.security.model.CustomUserDetails;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -78,9 +79,14 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     @Override
     @GetMapping("/api/v1/diagnosis/{id}/stream")
     public SseEmitter streamDiagnosisProgress(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable("id") Long diagnosisId
     ) {
-        log.info("SSE connection requested for diagnosisId: {}", diagnosisId);
+        Long memberId = userDetails.getMemberId();
+        log.info("SSE connection requested for diagnosisId: {}, memberId: {}", diagnosisId, memberId);
+
+        // 소유권 확인 (진단이 해당 사용자 것인지 검증)
+        diagnosisService.verifyDiagnosisOwnershipById(diagnosisId, memberId);
 
         // SSE Emitter 생성 및 등록
         SseEmitter emitter = emitterManager.createEmitter(diagnosisId);
@@ -96,23 +102,14 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     @Override
     @GetMapping("/api/v1/diagnosis/result/{id}")
     public ResponseEntity<DiagnosisResultResponse> getFinalDiagnosisResult(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable("id") Long diagnosisId
     ) {
-        try {
-            log.info("Fetching diagnosis result for diagnosisId: {}", diagnosisId);
+        Long memberId = userDetails.getMemberId();
+        log.info("Fetching diagnosis result for diagnosisId: {}, memberId: {}", diagnosisId, memberId);
 
-            DiagnosisResultResponse result = diagnosisService.findDiagnosisResult(diagnosisId);
-
-            return ResponseEntity.ok(result);
-
-        } catch (IllegalArgumentException e) {
-            log.warn("Diagnosis result not found for diagnosisId: {}", diagnosisId);
-            return ResponseEntity.notFound().build();
-
-        } catch (Exception e) {
-            log.error("Failed to fetch diagnosis result for diagnosisId: {}", diagnosisId, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        DiagnosisResultResponse result = diagnosisService.findDiagnosisResult(diagnosisId, memberId);
+        return ResponseEntity.ok(result);
     }
 
     /**
@@ -123,34 +120,33 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     @Override
     @PostMapping("/api/v1/diagnosis/{id}/job-confirmation")
     public ResponseEntity<DiagnosisProgressResponse> selectJobManually(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable("id") Long diagnosisId,
-            @RequestBody JobConfirmationRequest request
+            @RequestBody @Valid JobConfirmationRequest request
     ) {
-        try {
-            log.info("User manually selected NCS code: {} for diagnosisId: {}",
-                    request.selectedNcsCode(), diagnosisId);
+        Long memberId = userDetails.getMemberId();
+        log.info("User manually selected NCS code: {} for diagnosisId: {}, memberId: {}",
+                request.selectedNcsCode(), diagnosisId, memberId);
 
-            // 진단 상태를 AWAITING_USER_INPUT에서 IN_PROGRESS로 변경
-            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
+        // 소유권 확인
+        diagnosisService.verifyDiagnosisOwnershipById(diagnosisId, memberId);
 
-            // 비동기로 진단 재개 (SSE로 진행 상황 전송)
-            diagnosisService.continueWithUserSelectionAsync(diagnosisId, request.selectedNcsCode());
+        // 진단 상태를 AWAITING_USER_INPUT에서 IN_PROGRESS로 변경
+        diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
 
-            // 즉시 응답 반환 (진행 상황은 SSE로 확인)
-            DiagnosisProgressResponse progress = DiagnosisProgressResponse.builder()
-                    .diagnosisId(diagnosisId)
-                    .currentStep(DiagnosisStep.JOB_MATCHING)
-                    .status(DiagnosisStatus.IN_PROGRESS)
-                    .currentMessage("사용자 선택을 반영하여 진단을 재개합니다. SSE를 통해 진행 상황을 확인하세요.")
-                    .progressPercentage(33)
-                    .build();
+        // 비동기로 진단 재개 (SSE로 진행 상황 전송)
+        diagnosisService.continueWithUserSelectionAsync(diagnosisId, request.selectedNcsCode());
 
-            log.info("Diagnosis continuation initiated successfully with user selection");
-            return ResponseEntity.accepted().body(progress);
+        // 즉시 응답 반환 (진행 상황은 SSE로 확인)
+        DiagnosisProgressResponse progress = DiagnosisProgressResponse.builder()
+                .diagnosisId(diagnosisId)
+                .currentStep(DiagnosisStep.JOB_MATCHING)
+                .status(DiagnosisStatus.IN_PROGRESS)
+                .currentMessage("사용자 선택을 반영하여 진단을 재개합니다. SSE를 통해 진행 상황을 확인하세요.")
+                .progressPercentage(33)
+                .build();
 
-        } catch (Exception e) {
-            log.error("Failed to continue diagnosis with user selection: {}", e.getMessage(), e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+        log.info("Diagnosis continuation initiated successfully with user selection");
+        return ResponseEntity.accepted().body(progress);
     }
 }

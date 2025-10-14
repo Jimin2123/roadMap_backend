@@ -12,8 +12,11 @@ import java.util.concurrent.Executor;
  * 비동기 처리를 위한 설정 클래스
  * Spring의 @Async 어노테이션을 사용한 비동기 메서드 실행을 지원합니다.
  */
+import org.springframework.scheduling.annotation.EnableScheduling;
+
 @Configuration
 @EnableAsync
+@EnableScheduling
 @Slf4j
 public class AsyncConfig {
 
