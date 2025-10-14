@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Tag(name = "Diagnosis API", description = "진단 관련 API")
 public interface DiagnosisControllerSwagger {
@@ -29,7 +30,7 @@ public interface DiagnosisControllerSwagger {
             summary = "진단 과정 실시간 스트리밍 (SSE)",
             description = "진단 과정의 실시간 업데이트를 스트리밍 방식으로 제공합니다."
     )
-    ResponseEntity<DiagnosisProgressResponse> streamDiagnosisProgress(
+    SseEmitter streamDiagnosisProgress(
             @Parameter(description = "진단 ID") @PathVariable("id") Long diagnosisId
     );
 

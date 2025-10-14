@@ -1,9 +1,12 @@
 package com.shingu.roadmap.diagnosis.controller;
 
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
+import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
 import com.shingu.roadmap.diagnosis.dto.request.DiagnosisStartRequest;
 import com.shingu.roadmap.diagnosis.dto.request.JobConfirmationRequest;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
+import com.shingu.roadmap.diagnosis.service.DiagnosisEmitterManager;
 import com.shingu.roadmap.diagnosis.service.DiagnosisService;
 import com.shingu.roadmap.security.model.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 진단 컨트롤러
@@ -23,10 +27,12 @@ import org.springframework.web.bind.annotation.*;
 public class DiagnosisController implements DiagnosisControllerSwagger {
 
     private final DiagnosisService diagnosisService;
+    private final DiagnosisEmitterManager emitterManager;
 
     /**
      * 진단 실행
      * 사용자의 프로필을 기반으로 역량 진단을 시작합니다.
+     * 비동기로 실행되며, SSE를 통해 진행 상황을 확인할 수 있습니다.
      */
     @Override
     @PostMapping("/api/v1/diagnosis")
@@ -38,38 +44,45 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             Long memberId = userDetails.getMemberId();
             log.info("Starting diagnosis for memberId: {}", memberId);
 
-            // 전체 진단 실행
-            DiagnosisResultResponse result = diagnosisService.executeDiagnosis(memberId);
+            // 진단 ID 생성 (현재는 memberId 사용, 추후 별도 ID 생성 로직 추가 가능)
+            Long diagnosisId = memberId;
 
-            // DiagnosisProgressResponse로 변환
+            // 비동기로 진단 실행
+            diagnosisService.executeDiagnosisAsync(memberId, diagnosisId);
+
+            // 즉시 응답 반환 (진행 상황은 SSE로 확인)
             DiagnosisProgressResponse progress = DiagnosisProgressResponse.builder()
-                    .diagnosisId(result.diagnosisId())
-                    .currentStep(com.shingu.roadmap.diagnosis.domain.DiagnosisStep.FINAL_REPORT)
-                    .status(com.shingu.roadmap.diagnosis.domain.DiagnosisStatus.COMPLETED)
-                    .currentMessage("진단이 완료되었습니다.")
-                    .progressPercentage(100)
+                    .diagnosisId(diagnosisId)
+                    .currentStep(DiagnosisStep.RESUME_ANALYSIS)
+                    .status(DiagnosisStatus.IN_PROGRESS)
+                    .currentMessage("진단이 시작되었습니다. SSE를 통해 진행 상황을 확인하세요.")
+                    .progressPercentage(0)
                     .build();
 
-            return ResponseEntity.ok(progress);
+            return ResponseEntity.accepted().body(progress);
 
         } catch (Exception e) {
-            log.error("Failed to run diagnosis: {}", e.getMessage(), e);
+            log.error("Failed to start diagnosis: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     /**
      * 진단 과정 실시간 스트리밍 (SSE)
-     * TODO: SSE 구현 필요
+     * Server-Sent Events를 통해 진단 진행 상황을 실시간으로 전송합니다.
      */
     @Override
     @GetMapping("/api/v1/diagnosis/{id}/stream")
-    public ResponseEntity<DiagnosisProgressResponse> streamDiagnosisProgress(
+    public SseEmitter streamDiagnosisProgress(
             @PathVariable("id") Long diagnosisId
     ) {
-        // TODO: SSE 구현 필요
-        log.warn("SSE streaming not implemented yet for diagnosisId: {}", diagnosisId);
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+        log.info("SSE connection requested for diagnosisId: {}", diagnosisId);
+
+        // SSE Emitter 생성 및 등록
+        SseEmitter emitter = emitterManager.createEmitter(diagnosisId);
+
+        log.info("SSE emitter created for diagnosisId: {}", diagnosisId);
+        return emitter;
     }
 
     /**

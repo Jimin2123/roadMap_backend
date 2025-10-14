@@ -1,5 +1,6 @@
 package com.shingu.roadmap.diagnosis.service.pipeline;
 
+import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
 import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
@@ -9,6 +10,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * 진단 파이프라인을 통해 전달되는 컨텍스트 객체
@@ -23,6 +25,11 @@ public class DiagnosisContext {
      * 진단 대상 사용자 ID
      */
     private Long memberId;
+
+    /**
+     * 진단 ID (SSE 스트리밍을 위한 식별자)
+     */
+    private Long diagnosisId;
 
     /**
      * 사용자 프로필 (이력서, 스킬, 자격증 등 포함)
@@ -63,4 +70,9 @@ public class DiagnosisContext {
      * 진단 성공 여부
      */
     private boolean success;
+
+    /**
+     * 진행 상황 알림 콜백 (SSE 전송용)
+     */
+    private Consumer<DiagnosisProgressResponse> progressCallback;
 }
