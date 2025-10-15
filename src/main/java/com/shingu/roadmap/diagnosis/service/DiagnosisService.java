@@ -97,6 +97,10 @@ public class DiagnosisService {
             // 5. 결과 확인 및 완료 처리
             if (!context.isSuccess()) {
                 log.error("Diagnosis failed for diagnosisId: {}, error: {}", diagnosisId, context.getErrorMessage());
+
+                // 진단 실패 상태 DB에 저장
+                diagnosisStateService.failDiagnosisWithError(diagnosisId, context.getErrorMessage());
+
                 DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
                         .diagnosisId(diagnosisId)
                         .status(DiagnosisStatus.FAILED)
@@ -365,6 +369,10 @@ public class DiagnosisService {
             if (!context.isSuccess()) {
                 log.error("Diagnosis continuation failed for diagnosisId: {}, error: {}",
                         diagnosisId, context.getErrorMessage());
+
+                // 진단 실패 상태 DB에 저장
+                diagnosisStateService.failDiagnosisWithError(diagnosisId, context.getErrorMessage());
+
                 DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
                         .diagnosisId(diagnosisId)
                         .status(DiagnosisStatus.FAILED)

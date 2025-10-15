@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -90,6 +91,7 @@ public class NcsApiService {
    * @param ncsCode
    * @return
    */
+  @Transactional
   @Cacheable(value = "ncsOccupation", key = "#ncsCode")
   public boolean fetchAndRegisterNcsOccupation(String ncsCode) {
     // 1. 직무 정보 조회

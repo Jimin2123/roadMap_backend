@@ -30,6 +30,7 @@ logging:
     root: INFO # 전체 로그 레벨을 INFO로 설정
     org.springframework.web: DEBUG # 웹 관련 로깅은 DEBUG 레벨로 설정 (HTTP 요청/응답 등 상세 보기)
     com.shingu.roadmap: DEBUG # 애플리케이션 패키지의 로깅 레벨을 DEBUG로 설정
+    com.shingu.roadmap.diagnosis.service.DiagnosisStateService: TRACE
 
 springdoc:
   swagger-ui:

@@ -89,37 +89,51 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
     }
 
     /**
-     * 커리어넷 직업 정보로 NCS 분석 결과 보강
+     * 커리어넷 직업 정보 및 KSA 분석 결과로 NCS 분석 결과 보강
      */
     private NcsAnalysisResponse enrichWithCareerNetInfo(NcsAnalysisResponse ncsAnalysis, DiagnosisContext context) {
         List<NcsRecommendationCandidate> enrichedCandidates = new ArrayList<>();
         List<NcsRecommendationCandidate> candidates = ncsAnalysis.candidates();
+        List<KsaAnalysisResponse> ksaAnalyses = context.getKsaAnalysisResponses();
         int totalCandidates = candidates.size();
         int processedCount = 0;
 
+        // NCS 코드별 KSA 분석 결과 매핑
+        Map<String, KsaAnalysisResponse> ksaByNcsCode = new HashMap<>();
+        if (ksaAnalyses != null) {
+            for (KsaAnalysisResponse ksaAnalysis : ksaAnalyses) {
+                ksaByNcsCode.put(ksaAnalysis.ncsCode(), ksaAnalysis);
+            }
+        }
+
         for (NcsRecommendationCandidate candidate : candidates) {
             try {
-                // 커리어넷 직업 정보 조회
+                // 1. 커리어넷 직업 정보 조회
+                CareerNetJobInfo careerNetJobInfo = null;
                 JobDetailResponse jobDetail = fetchCareerNetJobInfo(candidate.ncsCode());
 
                 if (jobDetail != null && jobDetail.getContent() != null) {
                     var jobInfo = jobDetail.getContent();
 
-                    CareerNetJobInfo careerNetJobInfo = CareerNetJobInfo.builder()
+                    careerNetJobInfo = CareerNetJobInfo.builder()
                             .jobName(jobInfo.getJob())
                             .prospect(jobInfo.getProspect())
                             .salaryLevel(jobInfo.getSalery())
                             .build();
-
-                    // 후보 정보에 커리어넷 정보 추가
-                    enrichedCandidates.add(candidate.toBuilder()
-                            .careerNetJobInfo(careerNetJobInfo)
-                            .build());
-                } else {
-                    enrichedCandidates.add(candidate);
                 }
+
+                // 2. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
+                KsaAnalysisResponse ksaAnalysis = ksaByNcsCode.get(candidate.ncsCode());
+
+                // 3. 후보 정보에 커리어넷 정보 및 KSA 분석 결과 추가
+                enrichedCandidates.add(candidate.toBuilder()
+                        .careerNetJobInfo(careerNetJobInfo)
+                        .ksaAnalysis(ksaAnalysis)
+                        .build());
+
             } catch (Exception e) {
-                log.warn("Failed to fetch CareerNet info for NCS code {}: {}", candidate.ncsCode(), e.getMessage());
+                log.warn("Failed to enrich candidate for NCS code {}: {}", candidate.ncsCode(), e.getMessage());
+                // 오류 발생 시에도 원본 candidate는 유지
                 enrichedCandidates.add(candidate);
             }
 

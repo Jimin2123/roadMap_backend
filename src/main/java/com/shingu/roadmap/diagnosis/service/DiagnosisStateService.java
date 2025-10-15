@@ -9,6 +9,9 @@ import com.shingu.roadmap.diagnosis.repository.DiagnosisResultRepository;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
 import com.shingu.roadmap.member.repository.MemberRepository;
+import com.shingu.roadmap.resume.domain.Education;
+import com.shingu.roadmap.resume.domain.Introduction;
+import com.shingu.roadmap.resume.domain.Resume;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -85,6 +88,10 @@ public class DiagnosisStateService {
             });
         }
 
+        if (profile.getDesiredJobs() != null) {
+            Objects.hashCode(profile.getDesiredJobs().size());
+        }
+
         if (profile.getDesiredCapabilities() != null) {
             Objects.hashCode(profile.getDesiredCapabilities().size());
         }
@@ -95,17 +102,51 @@ public class DiagnosisStateService {
 
         // Resume 및 모든 중첩 컬렉션 초기화
         if (profile.getResume() != null) {
-            var resume = profile.getResume();
+            Resume resume = profile.getResume();
             Objects.hashCode(resume.getId()); // Resume 자체 초기화
 
-            // Introduction 초기화
+            // Introduction 초기화 (모든 @Lob 필드 강제 로딩)
             if (resume.getIntroduction() != null) {
-                Objects.hashCode(resume.getIntroduction().getId());
+                Introduction intro = resume.getIntroduction();
+                Objects.hashCode(intro.getId());
+                // @Lob 필드들을 강제로 초기화 (프록시 해제)
+                if (intro.getGrowthProcess() != null) {
+                    Objects.hashCode(intro.getGrowthProcess().length());
+                }
+                if (intro.getStrengths() != null) {
+                    Objects.hashCode(intro.getStrengths().length());
+                }
+                if (intro.getSchoolLife() != null) {
+                    Objects.hashCode(intro.getSchoolLife().length());
+                }
+                if (intro.getMotivation() != null) {
+                    Objects.hashCode(intro.getMotivation().length());
+                }
             }
 
-            // Education 초기화
+            // Education 초기화 (모든 필드 강제 로딩)
             if (resume.getEducation() != null) {
-                Objects.hashCode(resume.getEducation().getId());
+                Education edu = resume.getEducation();
+                Objects.hashCode(edu.getId());
+                // 모든 필드를 강제로 초기화 (프록시 해제)
+                if (edu.getSchool() != null) {
+                    Objects.hashCode(edu.getSchool().length());
+                }
+                if (edu.getMajor() != null) {
+                    Objects.hashCode(edu.getMajor().length());
+                }
+                if (edu.getGpa() != null) {
+                    Objects.hashCode(edu.getGpa());
+                }
+                if (edu.getStatus() != null) {
+                    Objects.hashCode(edu.getStatus().length());
+                }
+                if (edu.getPeriod() != null) {
+                    Objects.hashCode(edu.getPeriod().getStartDate());
+                    if (edu.getPeriod().getEndDate() != null) {
+                        Objects.hashCode(edu.getPeriod().getEndDate());
+                    }
+                }
             }
 
             // DesiredCompany 초기화
@@ -113,33 +154,93 @@ public class DiagnosisStateService {
                 Objects.hashCode(resume.getDesiredCompany().getId());
             }
 
-            // Activities 컬렉션 초기화
+            // Activities 컬렉션 초기화 (모든 필드 강제 로딩)
             if (resume.getActivities() != null) {
                 Objects.hashCode(resume.getActivities().size());
                 resume.getActivities().forEach(activity -> {
+                    // Activity의 모든 필드 초기화
+                    if (activity.getTitle() != null) {
+                        Objects.hashCode(activity.getTitle().length());
+                    }
+                    if (activity.getOrganization() != null) {
+                        Objects.hashCode(activity.getOrganization().length());
+                    }
+                    if (activity.getDescription() != null) {
+                        Objects.hashCode(activity.getDescription().length());
+                    }
                     if (activity.getPeriod() != null) {
                         Objects.hashCode(activity.getPeriod().getStartDate());
+                        if (activity.getPeriod().getEndDate() != null) {
+                            Objects.hashCode(activity.getPeriod().getEndDate());
+                        }
                     }
                 });
             }
 
-            // Projects 컬렉션 초기화
+            // Projects 컬렉션 초기화 (모든 필드 강제 로딩)
             if (resume.getProjects() != null) {
                 Objects.hashCode(resume.getProjects().size());
                 resume.getProjects().forEach(project -> {
-                    Objects.hashCode(project.getName());
+                    // Project의 모든 필드 초기화
+                    if (project.getName() != null) {
+                        Objects.hashCode(project.getName().length());
+                    }
+                    if (project.getRole() != null) {
+                        Objects.hashCode(project.getRole().length());
+                    }
+                    if (project.getDescription() != null) {
+                        Objects.hashCode(project.getDescription().length());
+                    }
+                    if (project.getUrl() != null) {
+                        Objects.hashCode(project.getUrl().length());
+                    }
                     if (project.getPeriod() != null) {
                         Objects.hashCode(project.getPeriod().getStartDate());
+                        if (project.getPeriod().getEndDate() != null) {
+                            Objects.hashCode(project.getPeriod().getEndDate());
+                        }
+                    }
+                    // TechStack 컬렉션 초기화
+                    if (project.getTechStack() != null) {
+                        Objects.hashCode(project.getTechStack().size());
+                        project.getTechStack().forEach(skill -> {
+                            if (skill != null) {
+                                Objects.hashCode(skill.getName());
+                            }
+                        });
+                    }
+                    // Achievements 컬렉션 초기화
+                    if (project.getAchievements() != null) {
+                        Objects.hashCode(project.getAchievements().size());
+                        // List<String>이므로 각 String도 초기화
+                        project.getAchievements().forEach(achievement -> {
+                            if (achievement != null) {
+                                Objects.hashCode(achievement.length());
+                            }
+                        });
                     }
                 });
             }
 
-            // Careers 컬렉션 초기화
+            // Careers 컬렉션 초기화 (모든 필드 강제 로딩)
             if (resume.getCareers() != null) {
                 Objects.hashCode(resume.getCareers().size());
                 resume.getCareers().forEach(career -> {
+                    // Career의 모든 필드 초기화
+                    if (career.getCompanyName() != null) {
+                        Objects.hashCode(career.getCompanyName().getValue().length());
+                    }
+                    if (career.getDepartment() != null) {
+                        Objects.hashCode(career.getDepartment().length());
+                    }
+                    if (career.getDescription() != null) {
+                        Objects.hashCode(career.getDescription().length());
+                    }
                     if (career.getPeriod() != null) {
                         Objects.hashCode(career.getPeriod().getStartDate());
+                        if (career.getPeriod().getEndDate() != null) {
+                            Objects.hashCode(career.getPeriod().getEndDate());
+                        }
                     }
                 });
             }

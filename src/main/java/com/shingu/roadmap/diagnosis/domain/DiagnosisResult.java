@@ -37,7 +37,6 @@ import java.util.Objects;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(toBuilder = true)
-@EqualsAndHashCode(of = "id", callSuper = false)
 public class DiagnosisResult extends BaseEntity {
 
     /**
