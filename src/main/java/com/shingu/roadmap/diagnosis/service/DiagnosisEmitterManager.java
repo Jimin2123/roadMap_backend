@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -31,6 +32,7 @@ public class DiagnosisEmitterManager {
     private static final int MAX_EMITTERS = 1000; // 최대 emitter 개수 (메모리 leak 방지)
 
     private final Map<Long, EmitterWrapper> emitters = new ConcurrentHashMap<>();
+    private final Set<Long> warnedDiagnosisIds = ConcurrentHashMap.newKeySet();
     private final ObjectMapper objectMapper;
 
     /**
@@ -166,7 +168,12 @@ public class DiagnosisEmitterManager {
     public void sendProgress(Long diagnosisId, DiagnosisProgressResponse progress) {
         EmitterWrapper wrapper = emitters.get(diagnosisId);
         if (wrapper == null) {
-            log.warn("No emitter found for diagnosisId: {}", diagnosisId);
+            // 첫 번째 경고는 INFO 레벨로, 이후는 DEBUG로 (중복 로그 방지)
+            if (warnedDiagnosisIds.add(diagnosisId)) {
+                log.info("No SSE emitter for diagnosisId: {} - proceeding without real-time updates", diagnosisId);
+            } else {
+                log.debug("Progress skipped for diagnosisId: {} (no emitter)", diagnosisId);
+            }
             return;
         }
 
@@ -219,6 +226,7 @@ public class DiagnosisEmitterManager {
             wrapper.markCompleted();
         } finally {
             emitters.remove(diagnosisId);
+            warnedDiagnosisIds.remove(diagnosisId);
         }
     }
 
@@ -254,6 +262,7 @@ public class DiagnosisEmitterManager {
             wrapper.markCompleted();
         } finally {
             emitters.remove(diagnosisId);
+            warnedDiagnosisIds.remove(diagnosisId);
         }
     }
 
@@ -285,6 +294,8 @@ public class DiagnosisEmitterManager {
                         log.warn("Failed to complete emitter during cleanup for diagnosisId: {}", diagnosisId, e);
                     }
                 }
+                // 경고 추적도 함께 정리
+                warnedDiagnosisIds.remove(diagnosisId);
             });
         }
     }
