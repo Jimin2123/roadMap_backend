@@ -88,7 +88,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             List<NcsRecommendationCandidate> candidates = new ArrayList<>();
             var validOccupationsList = validOccupations.stream()
                     .limit(MAX_RECOMMENDATION_COUNT)
-                    .collect(Collectors.toList());
+                    .toList();
 
             int totalOccupations = validOccupationsList.size();
             int processedCount = 0;
@@ -121,7 +121,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             // 1-4. 신뢰도 기반 자동 선택 또는 사용자 선택 요청
             double overallConfidence = calculateOverallConfidence(candidates);
             boolean requiresUserSelection = overallConfidence < HIGH_CONFIDENCE_THRESHOLD;
-            String selectedNcsCode = !requiresUserSelection ? candidates.get(0).ncsCode() : null;
+            String selectedNcsCode = !requiresUserSelection ? candidates.getFirst().ncsCode() : null;
 
             NcsAnalysisResponse ncsAnalysisResponse = NcsAnalysisResponse.builder()
                     .candidates(candidates)
@@ -164,7 +164,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                 return Optional.empty();
             }
 
-            var occupationItem = occupationResponse.data().get(0);
+            var occupationItem = occupationResponse.data().getFirst();
             String ncsName = occupationItem.dutyNm();
 
             // 능력단위 정보 조회 (교차 검증용)
@@ -190,7 +190,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                     .block();
 
             // 최종 신뢰도: AI 평가(70%) + 규칙 기반(30%) 가중 평균
-            double finalConfidence = (aiEvaluation.confidenceScore() * 0.7) + (ruleBasedConfidence * 0.3);
+            double finalConfidence = (Objects.requireNonNull(aiEvaluation).confidenceScore() * 0.7) + (ruleBasedConfidence * 0.3);
 
             log.info("Confidence for {}: AI={}, Rule={}, Final={}",
                     ncsCode, aiEvaluation.confidenceScore(), ruleBasedConfidence, finalConfidence);
@@ -315,16 +315,12 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             String ncsName,
             OpenAiService.NcsConfidenceEvaluation aiEvaluation
     ) {
-        StringBuilder reason = new StringBuilder();
 
-        reason.append(String.format("%s 직무는 귀하의 프로필과 %s 수준의 적합도를 보입니다. ",
-                ncsName,
-                getMatchLevelDescription(aiEvaluation.matchLevel())
-        ));
-
-        reason.append(aiEvaluation.reasoning());
-
-        return reason.toString();
+      return String.format("%s 직무는 귀하의 프로필과 %s 수준의 적합도를 보입니다. ",
+              ncsName,
+              getMatchLevelDescription(aiEvaluation.matchLevel())
+      ) +
+              aiEvaluation.reasoning();
     }
 
     /**

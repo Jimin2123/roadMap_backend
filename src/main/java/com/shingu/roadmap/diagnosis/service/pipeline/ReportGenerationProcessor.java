@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 3단계: 최종 진단 리포트 생성 프로세서
@@ -169,7 +168,7 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         }
 
         // 첫 번째 KSA 분석 결과 기준
-        KsaAnalysisResponse ksaAnalysis = ksaAnalyses.get(0);
+        KsaAnalysisResponse ksaAnalysis = ksaAnalyses.getFirst();
 
         // 1. 공통 역량 축 생성 (모든 KSA 항목명)
         List<String> competencyAxes = new ArrayList<>();
@@ -286,14 +285,14 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
         // 2. 추천 직무
         if (!ncsAnalysis.candidates().isEmpty()) {
-            NcsRecommendationCandidate topCandidate = ncsAnalysis.candidates().get(0);
+            NcsRecommendationCandidate topCandidate = ncsAnalysis.candidates().getFirst();
             summary.append(String.format("추천 직무: %s (%s)\n", topCandidate.ncsName(), topCandidate.ncsCode()));
             summary.append(String.format("적합도: %.1f%%\n\n", topCandidate.confidenceScore() * 100));
         }
 
         // 3. 역량 분석 요약
         if (!ksaAnalyses.isEmpty()) {
-            KsaAnalysisResponse ksaAnalysis = ksaAnalyses.get(0);
+            KsaAnalysisResponse ksaAnalysis = ksaAnalyses.getFirst();
             summary.append("역량 분석:\n");
             summary.append(ksaAnalysis.overallAssessment());
             summary.append("\n\n");
@@ -317,7 +316,7 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
         // 4. 커리어 전망 (커리어넷 정보 활용)
         if (!ncsAnalysis.candidates().isEmpty()) {
-            NcsRecommendationCandidate topCandidate = ncsAnalysis.candidates().get(0);
+            NcsRecommendationCandidate topCandidate = ncsAnalysis.candidates().getFirst();
             if (topCandidate.careerNetJobInfo() != null) {
                 CareerNetJobInfo jobInfo = topCandidate.careerNetJobInfo();
                 if (jobInfo.prospect() != null && !jobInfo.prospect().isEmpty()) {

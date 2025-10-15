@@ -112,7 +112,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
         // 첫 번째 후보 선택
         if (!ncsAnalysis.candidates().isEmpty()) {
-            return ncsAnalysis.candidates().get(0).ncsCode();
+            return ncsAnalysis.candidates().getFirst().ncsCode();
         }
 
         return null;
@@ -134,7 +134,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                 return responses;
             }
 
-            String firstCompUnitCd = compUnitResponse.data().get(0).compUnitCd();
+            String firstCompUnitCd = compUnitResponse.data().getFirst().compUnitCd();
 
             reportProgress(context, 38, "KSA 데이터를 조회하고 있습니다.");
 
@@ -568,7 +568,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
         }
 
         // 최근 프로젝트의 역할 분석
-        String recentRole = projects.get(0).getRole().toLowerCase();
+        String recentRole = projects.getFirst().getRole().toLowerCase();
 
         if (recentRole.contains("리드") || recentRole.contains("lead") || recentRole.contains("pl")) {
             return "LEAD";
