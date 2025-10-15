@@ -3,17 +3,20 @@ package com.shingu.roadmap.diagnosis.service;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisResult;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
+import com.shingu.roadmap.diagnosis.dto.internal.MemberWithProfile;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
 import com.shingu.roadmap.diagnosis.exception.DiagnosisAccessDeniedException;
 import com.shingu.roadmap.diagnosis.exception.DiagnosisAlreadyInProgressException;
 import com.shingu.roadmap.diagnosis.exception.DiagnosisNotFoundException;
-import com.shingu.roadmap.diagnosis.exception.ProfileNotFoundException;
 import com.shingu.roadmap.diagnosis.repository.DiagnosisResultRepository;
-import com.shingu.roadmap.diagnosis.service.pipeline.*;
+import com.shingu.roadmap.diagnosis.service.pipeline.CompetencyAnalysisProcessor;
+import com.shingu.roadmap.diagnosis.service.pipeline.DiagnosisContext;
+import com.shingu.roadmap.diagnosis.service.pipeline.DiagnosisProcessor;
+import com.shingu.roadmap.diagnosis.service.pipeline.NcsRecommendationProcessor;
+import com.shingu.roadmap.diagnosis.service.pipeline.ReportGenerationProcessor;
 import com.shingu.roadmap.member.domain.Member;
 import com.shingu.roadmap.member.domain.Profile;
-import com.shingu.roadmap.member.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -23,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 진단 서비스 - 파이프라인 오케스트레이터
@@ -38,12 +40,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Slf4j
 public class DiagnosisService {
 
-    private final MemberRepository memberRepository;
     private final DiagnosisResultRepository diagnosisResultRepository;
     private final NcsRecommendationProcessor ncsRecommendationProcessor;
     private final CompetencyAnalysisProcessor competencyAnalysisProcessor;
     private final ReportGenerationProcessor reportGenerationProcessor;
     private final DiagnosisEmitterManager emitterManager;
+    private final DiagnosisStateService diagnosisStateService; // 분리된 서비스 주입
 
     // 프로세서별 진행률 및 메시지 매핑
     private static final Map<String, ProcessorProgress> PROCESSOR_PROGRESS_MAP = Map.of(
@@ -53,129 +55,6 @@ public class DiagnosisService {
     );
 
     private record ProcessorProgress(DiagnosisStep step, int percentage, String message) {}
-
-    /**
-     * 전체 진단 프로세스 실행
-     *
-     * @param memberId 진단 대상 회원 ID
-     * @return 최종 진단 결과
-     */
-    @Transactional(readOnly = true)
-    public DiagnosisResultResponse executeDiagnosis(Long memberId) {
-        log.info("Starting diagnosis for memberId: {}", memberId);
-
-        // 1. 사용자 프로필 조회
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
-
-        Profile profile = member.getProfile();
-        if (profile == null) {
-            throw new IllegalArgumentException("Profile not found for memberId: " + memberId);
-        }
-
-        // 2. 진단 컨텍스트 초기화
-        DiagnosisContext context = DiagnosisContext.builder()
-                .memberId(memberId)
-                .profile(profile)
-                .success(true)
-                .build();
-
-        // 3. 파이프라인 프로세서 목록
-        List<DiagnosisProcessor> processors = List.of(
-                ncsRecommendationProcessor,
-                competencyAnalysisProcessor,
-                reportGenerationProcessor
-        );
-
-        // 4. 파이프라인 실행
-        context = executePipeline(processors, context);
-
-        // 5. 결과 반환
-        if (!context.isSuccess()) {
-            throw new RuntimeException("Diagnosis failed: " + context.getErrorMessage());
-        }
-
-        log.info("Diagnosis completed successfully for memberId: {}", memberId);
-        return context.getDiagnosisResultResponse();
-    }
-
-    /**
-     * 사용자 선택을 반영하여 진단 계속 진행
-     *
-     * @param memberId 진단 대상 회원 ID
-     * @param selectedNcsCode 사용자가 선택한 NCS 코드
-     * @return 최종 진단 결과
-     */
-    @Transactional(readOnly = true)
-    public DiagnosisResultResponse continueWithUserSelection(Long memberId, String selectedNcsCode) {
-        log.info("Continuing diagnosis for memberId: {} with user selected NCS code: {}", memberId, selectedNcsCode);
-
-        // 1. 사용자 프로필 조회
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
-
-        Profile profile = member.getProfile();
-        if (profile == null) {
-            throw new IllegalArgumentException("Profile not found for memberId: " + memberId);
-        }
-
-        // 2. 진단 컨텍스트 초기화 (1단계는 건너뛰고 2단계부터 시작)
-        DiagnosisContext context = DiagnosisContext.builder()
-                .memberId(memberId)
-                .profile(profile)
-                .userSelectedNcsCode(selectedNcsCode)
-                .success(true)
-                .build();
-
-        // 3. 2단계부터 파이프라인 실행
-        List<DiagnosisProcessor> processors = List.of(
-                competencyAnalysisProcessor,
-                reportGenerationProcessor
-        );
-
-        // 4. 파이프라인 실행
-        context = executePipeline(processors, context);
-
-        // 5. 결과 반환
-        if (!context.isSuccess()) {
-            throw new RuntimeException("Diagnosis continuation failed: " + context.getErrorMessage());
-        }
-
-        log.info("Diagnosis completed successfully for memberId: {}", memberId);
-        return context.getDiagnosisResultResponse();
-    }
-
-    /**
-     * 파이프라인 프로세서 순차 실행
-     *
-     * @param processors 프로세서 목록
-     * @param context 진단 컨텍스트
-     * @return 처리된 진단 컨텍스트
-     */
-    private DiagnosisContext executePipeline(List<DiagnosisProcessor> processors, DiagnosisContext context) {
-        for (DiagnosisProcessor processor : processors) {
-            log.info("Executing processor: {}", processor.getName());
-
-            try {
-                context = processor.process(context);
-
-                if (!context.isSuccess()) {
-                    log.error("Processor {} failed: {}", processor.getName(), context.getErrorMessage());
-                    break;
-                }
-
-                log.info("Processor {} completed successfully", processor.getName());
-
-            } catch (Exception e) {
-                log.error("Processor {} threw exception: {}", processor.getName(), e.getMessage(), e);
-                context.setSuccess(false);
-                context.setErrorMessage("프로세서 실행 중 오류 발생: " + processor.getName());
-                break;
-            }
-        }
-
-        return context;
-    }
 
     /**
      * 비동기로 진단을 실행하고 SSE로 진행 상황을 전송합니다.
@@ -192,7 +71,7 @@ public class DiagnosisService {
             sendProgress(diagnosisId, DiagnosisStep.RESUME_ANALYSIS, 0, DiagnosisStatus.IN_PROGRESS, "진단을 시작합니다...");
 
             // 1. 사용자 프로필 및 모든 연관 데이터 조회 (Transactional 메서드 호출 - Fully Detached)
-            MemberWithProfile memberData = loadDiagnosisDataDetached(memberId);
+            MemberWithProfile memberData = diagnosisStateService.loadDiagnosisDataDetached(memberId);
             Member member = memberData.member();
             Profile profile = memberData.profile();
 
@@ -232,7 +111,7 @@ public class DiagnosisService {
             // 6. 진단 결과 DB에 저장 (Transactional 메서드 호출)
             DiagnosisResultResponse diagnosisResultResponse = context.getDiagnosisResultResponse();
             if (diagnosisResultResponse != null) {
-                saveDiagnosisResultData(diagnosisId, diagnosisResultResponse);
+                diagnosisStateService.saveDiagnosisResultData(diagnosisId, diagnosisResultResponse);
             }
 
             // 7. 완료 상태 전송
@@ -250,7 +129,7 @@ public class DiagnosisService {
             log.error("Unexpected error during async diagnosis for diagnosisId: {}", diagnosisId, e);
 
             // 진단 실패 상태 DB에 저장
-            failDiagnosisWithError(diagnosisId, "진단 중 예기치 않은 오류가 발생했습니다: " + e.getMessage());
+            diagnosisStateService.failDiagnosisWithError(diagnosisId, "진단 중 예기치 않은 오류가 발생했습니다: " + e.getMessage());
 
             DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
                     .diagnosisId(diagnosisId)
@@ -452,14 +331,14 @@ public class DiagnosisService {
 
         try {
             // 진단 ID로 회원 ID 조회 및 상태 업데이트 (Transactional)
-            Long memberId = resumeDiagnosisAfterUserInput(diagnosisId);
+            Long memberId = diagnosisStateService.resumeDiagnosisAfterUserInput(diagnosisId);
 
             // 초기 상태 전송
             sendProgress(diagnosisId, DiagnosisStep.JOB_MATCHING, 33, DiagnosisStatus.IN_PROGRESS,
                     "사용자 선택을 반영하여 진단을 계속합니다...");
 
             // 1. 사용자 프로필 및 모든 연관 데이터 조회 (Transactional 메서드 호출 - Fully Detached)
-            MemberWithProfile memberData = loadDiagnosisDataDetached(memberId);
+            MemberWithProfile memberData = diagnosisStateService.loadDiagnosisDataDetached(memberId);
             Member member = memberData.member();
             Profile profile = memberData.profile();
 
@@ -500,7 +379,7 @@ public class DiagnosisService {
             // 6. 진단 결과 DB에 저장 (Transactional 메서드 호출)
             DiagnosisResultResponse diagnosisResultResponse = context.getDiagnosisResultResponse();
             if (diagnosisResultResponse != null) {
-                saveDiagnosisResultData(diagnosisId, diagnosisResultResponse);
+                diagnosisStateService.saveDiagnosisResultData(diagnosisId, diagnosisResultResponse);
             }
 
             // 7. 완료 상태 전송
@@ -518,7 +397,7 @@ public class DiagnosisService {
             log.error("Unexpected error during async diagnosis continuation for diagnosisId: {}", diagnosisId, e);
 
             // 진단 실패 상태 DB에 저장
-            failDiagnosisWithError(diagnosisId, "진단 중 예기치 않은 오류가 발생했습니다: " + e.getMessage());
+            diagnosisStateService.failDiagnosisWithError(diagnosisId, "진단 중 예기치 않은 오류가 발생했습니다: " + e.getMessage());
 
             DiagnosisProgressResponse errorProgress = DiagnosisProgressResponse.builder()
                     .diagnosisId(diagnosisId)
@@ -529,224 +408,6 @@ public class DiagnosisService {
                     .build();
             emitterManager.completeWithError(diagnosisId, errorProgress);
         }
-    }
-
-    /**
-     * 진단 데이터와 프로필을 트랜잭션 내에서 조회합니다.
-     * Profile을 EAGER 로딩하여 LazyInitializationException을 방지합니다.
-     *
-     * @param memberId 회원 ID
-     * @return Member와 Profile 데이터
-     * @throws IllegalArgumentException Member 또는 Profile이 없는 경우
-     */
-    @Transactional(readOnly = true)
-    public MemberWithProfile loadDiagnosisDataWithProfile(Long memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
-
-        Profile profile = member.getProfile();
-        if (profile == null) {
-            throw new ProfileNotFoundException(memberId);
-        }
-
-        // Profile의 컬렉션들을 초기화하여 Lazy Loading 방지
-        if (profile.getProfileSkills() != null) {
-            profile.getProfileSkills().size();
-        }
-        if (profile.getDesiredCapabilities() != null) {
-            profile.getDesiredCapabilities().size();
-        }
-        if (profile.getUserCapabilities() != null) {
-            profile.getUserCapabilities().size();
-        }
-        if (profile.getResume() != null) {
-            // Resume가 있다면 초기화
-            profile.getResume().getId();
-        }
-
-        return new MemberWithProfile(member, profile);
-    }
-
-    /**
-     * 진단에 필요한 모든 데이터를 트랜잭션 내에서 완전히 로딩합니다.
-     * 모든 lazy 컬렉션을 강제 초기화하여 @Async 메서드에서 LazyInitializationException을 방지합니다.
-     *
-     * @param memberId 회원 ID
-     * @return 완전히 초기화된 Member와 Profile 데이터
-     * @throws IllegalArgumentException Member 또는 Profile이 없는 경우
-     * @throws ProfileNotFoundException Profile이 없는 경우
-     */
-    @Transactional(readOnly = true)
-    public MemberWithProfile loadDiagnosisDataDetached(Long memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
-
-        Profile profile = member.getProfile();
-        if (profile == null) {
-            throw new ProfileNotFoundException(memberId);
-        }
-
-        // Profile 컬렉션 초기화
-        if (profile.getProfileSkills() != null) {
-            profile.getProfileSkills().size();
-            // Skill 엔티티 내부 필드도 초기화
-            profile.getProfileSkills().forEach(ps -> {
-                if (ps.getSkill() != null) {
-                    ps.getSkill().getName();
-                }
-            });
-        }
-
-        if (profile.getDesiredCapabilities() != null) {
-            profile.getDesiredCapabilities().size();
-        }
-
-        if (profile.getUserCapabilities() != null) {
-            profile.getUserCapabilities().size();
-        }
-
-        // Resume 및 모든 중첩 컬렉션 초기화
-        if (profile.getResume() != null) {
-            var resume = profile.getResume();
-            resume.getId(); // Resume 자체 초기화
-
-            // Introduction 초기화
-            if (resume.getIntroduction() != null) {
-                resume.getIntroduction().getId();
-            }
-
-            // Education 초기화
-            if (resume.getEducation() != null) {
-                resume.getEducation().getId();
-            }
-
-            // DesiredCompany 초기화
-            if (resume.getDesiredCompany() != null) {
-                resume.getDesiredCompany().getId();
-            }
-
-            // Activities 컬렉션 초기화
-            if (resume.getActivities() != null) {
-                resume.getActivities().size();
-                resume.getActivities().forEach(activity -> {
-                    if (activity.getPeriod() != null) {
-                        activity.getPeriod().getStartDate();
-                    }
-                });
-            }
-
-            // Projects 컬렉션 초기화
-            if (resume.getProjects() != null) {
-                resume.getProjects().size();
-                resume.getProjects().forEach(project -> {
-                    project.getName();
-                    if (project.getPeriod() != null) {
-                        project.getPeriod().getStartDate();
-                    }
-                });
-            }
-
-            // Careers 컬렉션 초기화
-            if (resume.getCareers() != null) {
-                resume.getCareers().size();
-                resume.getCareers().forEach(career -> {
-                    if (career.getPeriod() != null) {
-                        career.getPeriod().getStartDate();
-                    }
-                });
-            }
-
-            // Certificates 컬렉션 초기화
-            if (resume.getCertificates() != null) {
-                resume.getCertificates().size();
-                resume.getCertificates().forEach(cert -> {
-                    if (cert.getCertificate() != null) {
-                        cert.getCertificate().getJmfldnm();
-                    }
-                });
-            }
-        }
-
-        log.debug("Successfully loaded and initialized all diagnosis data for memberId: {}", memberId);
-        return new MemberWithProfile(member, profile);
-    }
-
-    /**
-     * 진단 결과를 트랜잭션 내에서 저장합니다.
-     *
-     * @param diagnosisId 진단 ID
-     * @param response 진단 결과 응답
-     * @throws IllegalArgumentException 진단 정보가 없는 경우
-     */
-    @Transactional
-    public void saveDiagnosisResultData(Long diagnosisId, DiagnosisResultResponse response) {
-        log.info("Saving diagnosis result for diagnosisId: {}", diagnosisId);
-
-        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
-                .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
-
-        // DiagnosisResultResponse를 DiagnosisResultData Value Object로 변환
-        com.shingu.roadmap.diagnosis.domain.DiagnosisResultData resultData =
-                com.shingu.roadmap.diagnosis.domain.DiagnosisResultData.fromResponse(
-                        response.summary(),
-                        response.ncsAnalyses(),
-                        response.confidenceScore(),
-                        response.radarChartData()
-                );
-
-        // 진단 완료 (도메인 메서드 사용)
-        diagnosisResult.completeDiagnosis(resultData);
-        diagnosisResultRepository.save(diagnosisResult);
-
-        log.info("Diagnosis result saved to database for diagnosisId: {}", diagnosisId);
-    }
-
-    /**
-     * 진단 실패를 트랜잭션 내에서 기록합니다.
-     *
-     * @param diagnosisId 진단 ID
-     * @param errorMessage 오류 메시지
-     */
-    @Transactional
-    public void failDiagnosisWithError(Long diagnosisId, String errorMessage) {
-        try {
-            DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
-                    .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
-
-            diagnosisResult.failDiagnosis(errorMessage);
-            diagnosisResultRepository.save(diagnosisResult);
-
-            log.info("Diagnosis marked as failed for diagnosisId: {}", diagnosisId);
-        } catch (Exception e) {
-            log.error("Failed to mark diagnosis as failed for diagnosisId: {}", diagnosisId, e);
-        }
-    }
-
-    /**
-     * 사용자 입력 후 진단을 재개하고 회원 ID를 반환합니다.
-     *
-     * @param diagnosisId 진단 ID
-     * @return 회원 ID
-     * @throws IllegalArgumentException 진단 정보가 없는 경우
-     */
-    @Transactional
-    public Long resumeDiagnosisAfterUserInput(Long diagnosisId) {
-        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
-                .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
-
-        Long memberId = diagnosisResult.getMemberId();
-        log.info("Finding memberId for diagnosisId: {}", diagnosisId);
-
-        // 진단 상태를 IN_PROGRESS로 변경 (도메인 메서드 사용)
-        log.info("Updating diagnosis status for diagnosisId: {} to IN_PROGRESS", diagnosisId);
-        if (diagnosisResult.getStatus() == DiagnosisStatus.PENDING) {
-            diagnosisResult.startDiagnosis();
-        } else if (diagnosisResult.getStatus() == DiagnosisStatus.AWAITING_USER_INPUT) {
-            diagnosisResult.resumeDiagnosis();
-        }
-        diagnosisResultRepository.save(diagnosisResult);
-
-        return memberId;
     }
 
     /**
@@ -779,9 +440,4 @@ public class DiagnosisService {
             throw new DiagnosisAccessDeniedException(diagnosisResult.getId(), memberId);
         }
     }
-
-    /**
-     * Member와 Profile을 함께 담는 레코드
-     */
-    private record MemberWithProfile(Member member, Profile profile) {}
 }
