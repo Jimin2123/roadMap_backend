@@ -210,7 +210,10 @@ public class DiagnosisResult extends BaseEntity {
      * @return 신뢰도 점수 (없으면 null)
      */
     public Double getConfidenceScore() {
-        return resultData != null ? resultData.getConfidenceScore() : null;
+        if (resultData == null) {
+            return null;
+        }
+        return resultData.getConfidenceScore();
     }
 
     /**

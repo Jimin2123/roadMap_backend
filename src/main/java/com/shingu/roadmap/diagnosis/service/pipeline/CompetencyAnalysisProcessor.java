@@ -226,17 +226,20 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             }
 
             // AI 분석 호출
-            Map<String, OpenAiService.KsaEvaluationResult> aiResults =
-                    openAiService.analyzeKsaCompetency(ncsCode, itemNames, profile)
-                            .onErrorResume(e -> {
-                                log.error("AI KSA analysis failed for category {}: {}", categoryName, e.getMessage());
-                                return reactor.core.publisher.Mono.just(Collections.emptyMap());
-                            })
-                            .block();
+            Map<String, OpenAiService.KsaEvaluationResult> aiResults;
+            try {
+                aiResults = openAiService.analyzeKsaCompetency(ncsCode, itemNames, profile).block();
+            } catch (Exception e) {
+                log.error("[CompetencyAnalysisProcessor] AI service error during KSA analysis for category {}: {}",
+                        categoryName, e.getMessage(), e);
+                log.warn("[CompetencyAnalysisProcessor] Falling back to rule-based analysis due to AI service error");
+                return analyzeKsaCategoryFallback(ksaItems, profile);
+            }
 
-            // AI 결과가 비어있으면 fallback 사용
+            // AI 결과가 비어있으면 fallback 사용 (legitimately no results)
             if (aiResults == null || aiResults.isEmpty()) {
-                log.warn("AI returned empty results for category: {}, using fallback", categoryName);
+                log.warn("[CompetencyAnalysisProcessor] AI returned empty results for category: {} (not an error), using fallback",
+                        categoryName);
                 return analyzeKsaCategoryFallback(ksaItems, profile);
             }
 

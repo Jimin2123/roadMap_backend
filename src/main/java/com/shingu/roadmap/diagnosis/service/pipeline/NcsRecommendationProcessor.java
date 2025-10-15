@@ -51,17 +51,21 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             }
 
             // 1-1. AI를 통한 NCS 코드 추천
-            Set<String> recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(profile)
-                    .onErrorResume(e -> {
-                        log.error("AI recommendation failed: {}", e.getMessage());
-                        return Mono.just(Collections.emptySet());
-                    })
-                    .block();
+            Set<String> recommendedNcsCodes;
+            try {
+                recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(profile).block();
+            } catch (Exception e) {
+                log.error("[NcsRecommendationProcessor] AI service error during NCS code recommendation: {}",
+                        e.getMessage(), e);
+                context.setSuccess(false);
+                context.setErrorMessage("AI 서비스 오류로 인해 직무 추천에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                return context;
+            }
 
             if (recommendedNcsCodes == null || recommendedNcsCodes.isEmpty()) {
-                log.warn("No NCS codes recommended by AI");
+                log.warn("[NcsRecommendationProcessor] No NCS codes recommended by AI (empty result - not an error)");
                 context.setSuccess(false);
-                context.setErrorMessage("AI가 적합한 직무를 찾지 못했습니다. 프로필을 보완해주세요.");
+                context.setErrorMessage("프로필 정보를 기반으로 적합한 직무를 찾지 못했습니다. 프로필을 보완해주세요.");
                 return context;
             }
 

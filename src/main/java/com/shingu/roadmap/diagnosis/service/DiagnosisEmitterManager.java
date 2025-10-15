@@ -11,6 +11,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,6 +28,7 @@ public class DiagnosisEmitterManager {
     private static final Long DEFAULT_TIMEOUT = 60 * 60 * 1000L; // 1시간
     private static final String EVENT_NAME = "diagnosis-progress";
     private static final int EMITTER_MAX_AGE_HOURS = 2; // 2시간 이상 된 emitter는 정리
+    private static final int MAX_EMITTERS = 1000; // 최대 emitter 개수 (메모리 leak 방지)
 
     private final Map<Long, EmitterWrapper> emitters = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
@@ -69,39 +71,90 @@ public class DiagnosisEmitterManager {
     /**
      * 새로운 SSE Emitter를 생성하고 등록합니다.
      *
+     * 메모리 leak 방지:
+     * - 최대 emitter 개수 제한 (MAX_EMITTERS)
+     * - 제한 초과 시 가장 오래된 emitter 강제 정리
+     * - 모든 lifecycle 이벤트에서 방어적으로 제거 처리
+     *
      * @param diagnosisId 진단 ID
      * @return SseEmitter
      */
     public SseEmitter createEmitter(Long diagnosisId) {
+        // 최대 emitter 개수 확인 및 정리
+        if (emitters.size() >= MAX_EMITTERS) {
+            log.warn("Maximum emitters limit reached ({}). Forcing cleanup of oldest emitters.", MAX_EMITTERS);
+            forceCleanupOldestEmitters(MAX_EMITTERS / 10); // 10% 정리
+        }
+
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
         EmitterWrapper wrapper = new EmitterWrapper(emitter);
+
+        // 방어적 제거 액션 (모든 lifecycle 이벤트에서 실행)
+        Runnable removeAction = () -> {
+            wrapper.markCompleted();
+            EmitterWrapper removed = emitters.remove(diagnosisId);
+            if (removed != null) {
+                log.debug("Emitter removed from map for diagnosisId: {}", diagnosisId);
+            }
+        };
 
         // 완료 시 맵에서 제거
         emitter.onCompletion(() -> {
             log.info("SSE emitter completed for diagnosisId: {}", diagnosisId);
-            wrapper.markCompleted();
-            emitters.remove(diagnosisId);
+            removeAction.run();
         });
 
         // 타임아웃 시 맵에서 제거
         emitter.onTimeout(() -> {
             log.warn("SSE emitter timed out for diagnosisId: {}", diagnosisId);
-            wrapper.markCompleted();
-            emitters.remove(diagnosisId);
+            removeAction.run();
         });
 
         // 에러 발생 시 맵에서 제거
         emitter.onError((e) -> {
             log.error("SSE emitter error for diagnosisId: {}", diagnosisId, e);
-            wrapper.markCompleted();
-            emitters.remove(diagnosisId);
+            removeAction.run();
         });
 
         // 맵에 등록
         emitters.put(diagnosisId, wrapper);
-        log.info("SSE emitter created and registered for diagnosisId: {}", diagnosisId);
+        log.info("SSE emitter created and registered for diagnosisId: {} (total emitters: {})",
+                diagnosisId, emitters.size());
 
         return emitter;
+    }
+
+    /**
+     * 가장 오래된 emitter들을 강제로 정리합니다.
+     * 메모리 leak 방지를 위한 안전장치입니다.
+     *
+     * @param count 정리할 emitter 개수
+     */
+    private void forceCleanupOldestEmitters(int count) {
+        List<Map.Entry<Long, EmitterWrapper>> sortedEntries = emitters.entrySet().stream()
+                .sorted(Comparator.comparing(entry -> entry.getValue().getCreatedAt()))
+                .limit(count)
+                .toList();
+
+        log.info("Force cleaning up {} oldest emitters", sortedEntries.size());
+
+        sortedEntries.forEach(entry -> {
+            Long diagnosisId = entry.getKey();
+            EmitterWrapper wrapper = entry.getValue();
+
+            try {
+                if (!wrapper.isCompleted()) {
+                    wrapper.getEmitter().complete();
+                    wrapper.markCompleted();
+                }
+                emitters.remove(diagnosisId);
+                log.info("Force cleaned up emitter for diagnosisId: {}", diagnosisId);
+            } catch (Exception e) {
+                log.warn("Failed to force cleanup emitter for diagnosisId: {}", diagnosisId, e);
+                // 실패하더라도 맵에서는 제거
+                emitters.remove(diagnosisId);
+            }
+        });
     }
 
     /**

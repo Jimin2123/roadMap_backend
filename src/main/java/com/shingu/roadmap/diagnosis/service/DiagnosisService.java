@@ -191,8 +191,8 @@ public class DiagnosisService {
             // 초기 상태 전송
             sendProgress(diagnosisId, DiagnosisStep.RESUME_ANALYSIS, 0, DiagnosisStatus.IN_PROGRESS, "진단을 시작합니다...");
 
-            // 1. 사용자 프로필 조회 (Transactional 메서드 호출)
-            MemberWithProfile memberData = loadDiagnosisDataWithProfile(memberId);
+            // 1. 사용자 프로필 및 모든 연관 데이터 조회 (Transactional 메서드 호출 - Fully Detached)
+            MemberWithProfile memberData = loadDiagnosisDataDetached(memberId);
             Member member = memberData.member();
             Profile profile = memberData.profile();
 
@@ -321,6 +321,10 @@ public class DiagnosisService {
      * 새로운 진단을 생성하고 진단 ID를 반환합니다.
      * 이미 진행 중인 진단이 있으면 예외를 발생시킵니다.
      *
+     * TOCTOU 경쟁 조건 방지:
+     * - 비관적 락을 사용하여 동시 요청 시 데이터베이스 레벨에서 직렬화
+     * - 진단 생성 직후 즉시 IN_PROGRESS 상태로 전환하여 중복 생성 방지
+     *
      * @param memberId 회원 ID
      * @return 생성된 진단 ID
      * @throws DiagnosisAlreadyInProgressException 이미 진행 중인 진단이 있는 경우
@@ -329,30 +333,33 @@ public class DiagnosisService {
     public Long createNewDiagnosis(Long memberId) {
         log.info("Creating new diagnosis for memberId: {}", memberId);
 
-        // 진행 중인 진단이 있는지 확인
-        Optional<DiagnosisResult> existingInProgress = diagnosisResultRepository
-                .findFirstByMemberIdAndStatus(memberId, DiagnosisStatus.IN_PROGRESS);
+        // 비관적 락으로 진행 중인 진단 확인 (TOCTOU 경쟁 조건 방지)
+        List<DiagnosisStatus> inProgressStatuses = List.of(
+                DiagnosisStatus.IN_PROGRESS,
+                DiagnosisStatus.PENDING,
+                DiagnosisStatus.AWAITING_USER_INPUT
+        );
 
-        if (existingInProgress.isPresent()) {
-            log.warn("Diagnosis already in progress for memberId: {}, diagnosisId: {}",
-                    memberId, existingInProgress.get().getId());
+        Optional<DiagnosisResult> existingDiagnosis = diagnosisResultRepository
+                .findInProgressDiagnosisWithLock(memberId, inProgressStatuses);
+
+        if (existingDiagnosis.isPresent()) {
+            DiagnosisResult existing = existingDiagnosis.get();
+            log.warn("Diagnosis already in progress for memberId: {}, diagnosisId: {}, status: {}",
+                    memberId, existing.getId(), existing.getStatus());
             throw new DiagnosisAlreadyInProgressException(memberId);
         }
 
-        // 대기 중인 진단도 확인 (PENDING 상태)
-        Optional<DiagnosisResult> existingPending = diagnosisResultRepository
-                .findFirstByMemberIdAndStatus(memberId, DiagnosisStatus.PENDING);
-
-        if (existingPending.isPresent()) {
-            log.warn("Diagnosis already pending for memberId: {}, diagnosisId: {}",
-                    memberId, existingPending.get().getId());
-            throw new DiagnosisAlreadyInProgressException(memberId);
-        }
-
+        // 진단 생성 및 즉시 IN_PROGRESS 상태로 전환
         DiagnosisResult diagnosis = DiagnosisResult.createPending(memberId);
-
         DiagnosisResult saved = diagnosisResultRepository.save(diagnosis);
-        log.info("New diagnosis created with diagnosisId: {}", saved.getId());
+
+        // 즉시 IN_PROGRESS로 전환하여 경쟁 조건 최소화
+        saved.startDiagnosis();
+        diagnosisResultRepository.save(saved);
+
+        log.info("New diagnosis created and started with diagnosisId: {}, status: {}",
+                saved.getId(), saved.getStatus());
 
         return saved.getId();
     }
@@ -451,8 +458,8 @@ public class DiagnosisService {
             sendProgress(diagnosisId, DiagnosisStep.JOB_MATCHING, 33, DiagnosisStatus.IN_PROGRESS,
                     "사용자 선택을 반영하여 진단을 계속합니다...");
 
-            // 1. 사용자 프로필 조회 (Transactional 메서드 호출)
-            MemberWithProfile memberData = loadDiagnosisDataWithProfile(memberId);
+            // 1. 사용자 프로필 및 모든 연관 데이터 조회 (Transactional 메서드 호출 - Fully Detached)
+            MemberWithProfile memberData = loadDiagnosisDataDetached(memberId);
             Member member = memberData.member();
             Profile profile = memberData.profile();
 
@@ -557,6 +564,110 @@ public class DiagnosisService {
             profile.getResume().getId();
         }
 
+        return new MemberWithProfile(member, profile);
+    }
+
+    /**
+     * 진단에 필요한 모든 데이터를 트랜잭션 내에서 완전히 로딩합니다.
+     * 모든 lazy 컬렉션을 강제 초기화하여 @Async 메서드에서 LazyInitializationException을 방지합니다.
+     *
+     * @param memberId 회원 ID
+     * @return 완전히 초기화된 Member와 Profile 데이터
+     * @throws IllegalArgumentException Member 또는 Profile이 없는 경우
+     * @throws ProfileNotFoundException Profile이 없는 경우
+     */
+    @Transactional(readOnly = true)
+    public MemberWithProfile loadDiagnosisDataDetached(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new IllegalArgumentException("Member not found for memberId: " + memberId));
+
+        Profile profile = member.getProfile();
+        if (profile == null) {
+            throw new ProfileNotFoundException(memberId);
+        }
+
+        // Profile 컬렉션 초기화
+        if (profile.getProfileSkills() != null) {
+            profile.getProfileSkills().size();
+            // Skill 엔티티 내부 필드도 초기화
+            profile.getProfileSkills().forEach(ps -> {
+                if (ps.getSkill() != null) {
+                    ps.getSkill().getName();
+                }
+            });
+        }
+
+        if (profile.getDesiredCapabilities() != null) {
+            profile.getDesiredCapabilities().size();
+        }
+
+        if (profile.getUserCapabilities() != null) {
+            profile.getUserCapabilities().size();
+        }
+
+        // Resume 및 모든 중첩 컬렉션 초기화
+        if (profile.getResume() != null) {
+            var resume = profile.getResume();
+            resume.getId(); // Resume 자체 초기화
+
+            // Introduction 초기화
+            if (resume.getIntroduction() != null) {
+                resume.getIntroduction().getId();
+            }
+
+            // Education 초기화
+            if (resume.getEducation() != null) {
+                resume.getEducation().getId();
+            }
+
+            // DesiredCompany 초기화
+            if (resume.getDesiredCompany() != null) {
+                resume.getDesiredCompany().getId();
+            }
+
+            // Activities 컬렉션 초기화
+            if (resume.getActivities() != null) {
+                resume.getActivities().size();
+                resume.getActivities().forEach(activity -> {
+                    if (activity.getPeriod() != null) {
+                        activity.getPeriod().getStartDate();
+                    }
+                });
+            }
+
+            // Projects 컬렉션 초기화
+            if (resume.getProjects() != null) {
+                resume.getProjects().size();
+                resume.getProjects().forEach(project -> {
+                    project.getName();
+                    if (project.getPeriod() != null) {
+                        project.getPeriod().getStartDate();
+                    }
+                });
+            }
+
+            // Careers 컬렉션 초기화
+            if (resume.getCareers() != null) {
+                resume.getCareers().size();
+                resume.getCareers().forEach(career -> {
+                    if (career.getPeriod() != null) {
+                        career.getPeriod().getStartDate();
+                    }
+                });
+            }
+
+            // Certificates 컬렉션 초기화
+            if (resume.getCertificates() != null) {
+                resume.getCertificates().size();
+                resume.getCertificates().forEach(cert -> {
+                    if (cert.getCertificate() != null) {
+                        cert.getCertificate().getJmfldnm();
+                    }
+                });
+            }
+        }
+
+        log.debug("Successfully loaded and initialized all diagnosis data for memberId: {}", memberId);
         return new MemberWithProfile(member, profile);
     }
 
