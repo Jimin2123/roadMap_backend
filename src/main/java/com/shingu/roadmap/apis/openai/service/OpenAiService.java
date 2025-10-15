@@ -738,6 +738,88 @@ public class OpenAiService {
           String recommendation
   ) {}
 
+  /**
+   * AI 기반 NCS 코드를 CareerNet 직업 코드로 매핑
+   *
+   * @param ncsCode NCS 직무 코드
+   * @param ncsName NCS 직무명
+   * @param ncsDescription NCS 직무 설명
+   * @return CareerNet 직업 카테고리 코드 (null 가능)
+   */
+  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
+  public Mono<String> mapNcsToCareerNetJobCode(String ncsCode, String ncsName, String ncsDescription) {
+    String jobCategoriesJson = careerNetCodeProvider.getJobInfoCodesJson();
+
+    String systemPrompt = """
+        당신은 NCS(국가직무능력표준) 코드를 CareerNet 직업 분류 코드로 매핑하는 전문가입니다.
+
+        [규칙]
+        1. NCS 직무 정보를 정확히 분석하여 가장 적합한 CareerNet 직업 카테고리를 선택해야 합니다.
+        2. **반드시** [선택 가능한 CareerNet 직업 카테고리 목록]에 있는 코드 중에서만 선택해야 합니다.
+        3. 직무명과 설명의 핵심 키워드를 기반으로 가장 관련성이 높은 카테고리를 선택하세요.
+        4. 매핑이 불가능하거나 적합한 카테고리가 없다면 null을 반환하세요.
+
+        [출력 형식]
+        - 반드시 아래 형식 중 하나로만 응답해주세요:
+        - 매핑 성공 시: {"careerNetCode": "100042"}
+        - 매핑 실패 시: {"careerNetCode": null}
+        - 설명이나 다른 텍스트는 절대 포함하지 마세요.
+        """;
+
+    String userPrompt = String.format("""
+        [NCS 직무 정보]
+        - NCS 코드: %s
+        - 직무명: %s
+        - 직무 설명: %s
+
+        [선택 가능한 CareerNet 직업 카테고리 목록]
+        %s
+
+        위 NCS 직무와 가장 적합한 CareerNet 직업 카테고리 코드를 선택하세요.
+        """,
+            ncsCode,
+            ncsName,
+            ncsDescription != null ? ncsDescription : "설명 없음",
+            jobCategoriesJson
+    );
+
+    List<Map<String, String>> messages = List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+    );
+
+    return openAiClient.generateChatCompletion(messages)
+            .flatMap(response -> {
+              try {
+                String cleanedResponse = response.trim();
+                if (cleanedResponse.startsWith("```")) {
+                  cleanedResponse = cleanedResponse
+                          .replaceAll("```json", "")
+                          .replaceAll("```", "")
+                          .trim();
+                }
+
+                Map<String, String> result = objectMapper.readValue(
+                        cleanedResponse,
+                        new TypeReference<>() {}
+                );
+
+                String careerNetCode = result.get("careerNetCode");
+                if (careerNetCode != null && !careerNetCode.equalsIgnoreCase("null")) {
+                  log.debug("Successfully mapped NCS code {} to CareerNet code {}", ncsCode, careerNetCode);
+                  return Mono.just(careerNetCode);
+                } else {
+                  log.debug("No suitable CareerNet mapping found for NCS code {}", ncsCode);
+                  return Mono.just((String) null);
+                }
+
+              } catch (Exception e) {
+                log.error("Failed to parse NCS-CareerNet mapping response: {}", response, e);
+                return Mono.just((String) null);
+              }
+            });
+  }
+
   // --- Helper Methods ---
 
   public String resumeToText(Resume resume) {

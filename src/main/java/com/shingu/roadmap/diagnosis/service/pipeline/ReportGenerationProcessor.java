@@ -3,6 +3,9 @@ package com.shingu.roadmap.diagnosis.service.pipeline;
 import com.shingu.roadmap.apis.careernet.dto.request.JobInformationRequest;
 import com.shingu.roadmap.apis.careernet.dto.response.JobDetailResponse;
 import com.shingu.roadmap.apis.careernet.service.CareerNetService;
+import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
+import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
+import com.shingu.roadmap.apis.openai.service.OpenAiService;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
 import com.shingu.roadmap.diagnosis.dto.common.*;
@@ -33,6 +36,8 @@ import java.util.Map;
 public class ReportGenerationProcessor implements DiagnosisProcessor {
 
     private final CareerNetService careerNetService;
+    private final OpenAiService openAiService;
+    private final NcsOccupationRepository ncsOccupationRepository;
 
     @Override
     public DiagnosisContext process(DiagnosisContext context) {
@@ -151,20 +156,50 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
     /**
      * 커리어넷 직업 정보 조회
+     * NCS 코드를 AI 기반으로 CareerNet 직업 코드로 매핑하여 조회
      */
     private JobDetailResponse fetchCareerNetJobInfo(String ncsCode) {
         try {
-            // NCS 코드를 커리어넷 직업 코드로 매핑 (임시로 동일 코드 사용)
+            // 1. NCS 정보 조회
+            NcsOccupation ncsOccupation = ncsOccupationRepository.findById(ncsCode).orElse(null);
+
+            if (ncsOccupation == null) {
+                log.warn("NCS occupation not found for code: {}", ncsCode);
+                return null;
+            }
+
+            // 2. AI 기반 매핑으로 CareerNet 직업 코드 획득
+            String careerNetJobCode = openAiService.mapNcsToCareerNetJobCode(
+                    ncsCode,
+                    ncsOccupation.getDutyNm(),
+                    ncsOccupation.getDutyDef()
+            ).block();  // 동기 변환
+
+            if (careerNetJobCode == null) {
+                log.debug("AI mapping returned null for NCS code {}. Using NCS code as fallback", ncsCode);
+                careerNetJobCode = ncsCode;  // Fallback
+            }
+
+            // 3. CareerNet API 호출
             JobInformationRequest request = new JobInformationRequest();
             request.setSvcType("api");
             request.setSvcCode("JOB_VIEW");
             request.setContentType("json");
             request.setGubun("job_dic_list");
-            request.setJobdicSeq(ncsCode);
+            request.setJobdicSeq(careerNetJobCode);
 
-            return careerNetService.getJobInformation(request);
+            JobDetailResponse response = careerNetService.getJobInformation(request);
+
+            if (response != null) {
+                log.debug("Successfully fetched CareerNet job info for NCS code {} (mapped to {})",
+                        ncsCode, careerNetJobCode);
+            }
+
+            return response;
+
         } catch (Exception e) {
-            log.error("Failed to fetch job information from CareerNet: {}", e.getMessage());
+            log.error("Failed to fetch job information from CareerNet for NCS code {}: {}",
+                    ncsCode, e.getMessage());
             return null;
         }
     }
