@@ -1,48 +1,41 @@
 package com.shingu.roadmap.apis.careernet.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotEmpty;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.ToString;
 
-@Schema(description = "직업 정보 API 요청 DTO")
-@Getter
-@Setter
-@ToString
-public class JobInformationRequest {
+@Schema(description = "직업정보 목록 조회 요청 DTO")
+public record JobInformationRequest(
+        @Schema(description = "OpenAPI 인증키", requiredMode = Schema.RequiredMode.REQUIRED, example = "YOUR_API_KEY")
+        String apiKey,
 
+        @Schema(description = "서비스 타입", requiredMode = Schema.RequiredMode.REQUIRED, defaultValue = "api")
+        String svcType,
 
-  @NotEmpty
-  @Schema(description = "서비스 타입", requiredMode = Schema.RequiredMode.REQUIRED, example = "api", defaultValue = "api")
-  private String svcType = "api";
+        @Schema(description = "서비스 코드(JOB: 직업정보, JOB_VIEW: 직업정보 상세)",
+                requiredMode = Schema.RequiredMode.REQUIRED, defaultValue = "JOB")
+        String svcCode,
 
-  @NotEmpty
-  @Schema(description = "서비스 코드 (JOB: 리스트, JOB_VIEW: 상세)", requiredMode = Schema.RequiredMode.REQUIRED, example = "JOB")
-  private String svcCode;
+        @Schema(description = "직업사전 분류형태 코드(job_dic_list: 커리어넷직업분류별, job_apti_list: 적성유형별)",
+                requiredMode = Schema.RequiredMode.REQUIRED, defaultValue = "job_dic_list")
+        String gubun,
 
-  @Schema(description = "응답 형식 (xml, json)", example = "json", defaultValue = "json")
-  private String contentType = "json";
+        @Schema(description = "응답 데이터 형식", defaultValue = "json")
+        String contentType,
 
-  @NotEmpty
-  @Schema(description = "직업사전 분류 형태 코드 (job_dic_list: 직업사전직업분류, job_apti_list: 적성유형별)", requiredMode = Schema.RequiredMode.REQUIRED, example = "job_dic_list")
-  private String gubun;
+        @Schema(description = "능력별 필터(전체일 경우 빈칸)", example = "1")
+        String pgubn,
 
-  @Schema(description = "능력", example = "전체")
-  private String pgubn;
+        @Schema(description = "직업분류 또는 직군 필터(전체일 경우 빈칸)", example = "1")
+        String category,
 
-  @Schema(description = "직업 분류 또는 직군", example = "전체")
-  private String category;
+        @Schema(description = "현재 페이지")
+        String thisPage,
 
-  @Schema(description = "현재 페이지", example = "1")
-  private String thisPage;
+        @Schema(description = "페이지당 건수")
+        String perPage,
 
-  @Schema(description = "한 페이지당 건수", example = "10")
-  private String perPage;
+        @Schema(description = "검색어")
+        String searchJobNm,
 
-  @Schema(description = "검색어", example = "개발자")
-  private String searchJobNm;
-
-  @Schema(description = "직업 코드 ID (상세 조회 시 사용)", example = "10038")
-  private String jobdicSeq;
-}
+        @Schema(description = "직업코드 (상세일 경우만 활성화)", example = "1")
+        String jobdicSeq
+) {}
