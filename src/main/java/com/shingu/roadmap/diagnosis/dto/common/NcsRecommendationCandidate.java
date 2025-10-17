@@ -52,6 +52,12 @@ public record NcsRecommendationCandidate(
                 description = "커리어넷 직업 정보 (직업 상세 정보 보강용)",
                 requiredMode = Schema.RequiredMode.NOT_REQUIRED
         )
-        CareerNetJobInfo careerNetJobInfo
+        CareerNetJobInfo careerNetJobInfo,
+
+        @Schema(
+                description = "진로 상담 사례 목록 (실제 상담 사례 참고용)",
+                requiredMode = Schema.RequiredMode.NOT_REQUIRED
+        )
+        List<CounselingCaseInfo> counselingCases
 ) {
 }

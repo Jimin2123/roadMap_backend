@@ -41,40 +41,62 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
     @Override
     public DiagnosisContext process(DiagnosisContext context) {
-        log.info("[CompetencyAnalysisProcessor] Starting competency analysis for memberId: {}", context.getMemberId());
+        log.info("[CompetencyAnalysisProcessor.process] ENTER - memberId: {}, diagnosisId: {}",
+            context.getMemberId(), context.getDiagnosisId());
+        long totalStartTime = System.currentTimeMillis();
 
         try {
             NcsAnalysisResponse ncsAnalysis = context.getNcsAnalysisResponse();
             if (ncsAnalysis == null || ncsAnalysis.candidates() == null || ncsAnalysis.candidates().isEmpty()) {
+                log.error("[CompetencyAnalysisProcessor.process] NCS analysis result is missing or empty - aborting");
                 throw new IllegalArgumentException("NCS analysis result is required for competency analysis");
             }
+            log.debug("[CompetencyAnalysisProcessor.process] NCS analysis loaded - candidatesCount: {}",
+                ncsAnalysis.candidates().size());
 
             Profile profile = context.getProfile();
+            log.debug("[CompetencyAnalysisProcessor.process] Determining target NCS code");
             String targetNcsCode = determineTargetNcsCode(context);
 
             if (targetNcsCode == null) {
-                log.warn("No target NCS code available for competency analysis");
+                long duration = System.currentTimeMillis() - totalStartTime;
+                log.warn("[CompetencyAnalysisProcessor.process] No target NCS code available - duration: {}ms", duration);
                 context.setSuccess(false);
                 context.setErrorMessage("분석 대상 직무가 선택되지 않았습니다.");
+                log.info("[CompetencyAnalysisProcessor.process] EXIT (NO TARGET) - duration: {}ms", duration);
                 return context;
             }
 
-            log.info("Analyzing competency for NCS code: {}", targetNcsCode);
+            log.info("[CompetencyAnalysisProcessor.process] Target NCS code determined: {} (userSelected: {})",
+                targetNcsCode, context.getUserSelectedNcsCode() != null);
 
             // 2-1. KSA 분석 수행
+            log.debug("[CompetencyAnalysisProcessor.process] Starting KSA analysis");
+            long ksaStartTime = System.currentTimeMillis();
             List<KsaAnalysisResponse> ksaAnalysisResponses = performKsaAnalysis(targetNcsCode, profile, context);
+            long ksaDuration = System.currentTimeMillis() - ksaStartTime;
+            log.info("[CompetencyAnalysisProcessor.process] KSA analysis completed in {}ms - responsesCount: {}",
+                ksaDuration, ksaAnalysisResponses.size());
 
             if (ksaAnalysisResponses.isEmpty()) {
-                log.warn("Failed to perform KSA analysis for NCS code: {}", targetNcsCode);
+                long duration = System.currentTimeMillis() - totalStartTime;
+                log.warn("[CompetencyAnalysisProcessor.process] KSA analysis returned empty results - ncsCode: {}, duration: {}ms",
+                    targetNcsCode, duration);
                 context.setSuccess(false);
                 context.setErrorMessage("KSA 역량 분석에 실패했습니다.");
+                log.info("[CompetencyAnalysisProcessor.process] EXIT (KSA FAILED) - duration: {}ms", duration);
                 return context;
             }
 
             reportProgress(context, 63, "커리어 레벨을 진단하고 있습니다.");
 
             // 2-3. 커리어 레벨 진단
+            log.debug("[CompetencyAnalysisProcessor.process] Starting career level diagnosis");
+            long careerStartTime = System.currentTimeMillis();
             String careerLevel = diagnoseCareerLevel(targetNcsCode, profile);
+            long careerDuration = System.currentTimeMillis() - careerStartTime;
+            log.info("[CompetencyAnalysisProcessor.process] Career level diagnosed in {}ms - level: {}",
+                careerDuration, careerLevel);
 
             context.setKsaAnalysisResponses(ksaAnalysisResponses);
             context.setCareerLevel(careerLevel);
@@ -82,12 +104,16 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
             reportProgress(context, 66, "역량 분석이 완료되었습니다.");
 
-            log.info("[CompetencyAnalysisProcessor] Completed. Career level: {}", careerLevel);
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.info("[CompetencyAnalysisProcessor.process] EXIT (SUCCESS) - totalDuration: {}ms, targetNcsCode: {}, careerLevel: {}, ksaResponsesCount: {}",
+                    totalDuration, targetNcsCode, careerLevel, ksaAnalysisResponses.size());
 
             return context;
 
         } catch (Exception e) {
-            log.error("[CompetencyAnalysisProcessor] Failed to process: {}", e.getMessage(), e);
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.error("[CompetencyAnalysisProcessor.process] EXCEPTION - memberId: {}, totalDuration: {}ms, error: {}",
+                context.getMemberId(), totalDuration, e.getMessage(), e);
             context.setSuccess(false);
             context.setErrorMessage("역량 분석 중 오류가 발생했습니다: " + e.getMessage());
             return context;
@@ -633,17 +659,28 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
      * 진행 상황을 SSE로 전송하는 헬퍼 메서드
      */
     private void reportProgress(DiagnosisContext context, int progressPercentage, String message) {
-        if (context.getProgressCallback() != null) {
-            DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
-                    .diagnosisId(context.getDiagnosisId())
-                    .currentStep(DiagnosisStep.JOB_MATCHING)
-                    .progressPercentage(progressPercentage)
-                    .status(DiagnosisStatus.IN_PROGRESS)
-                    .currentMessage(message)
-                    .build();
+        log.debug("[CompetencyAnalysisProcessor.reportProgress] ENTER - diagnosisId: {}, percentage: {}%, message: {}",
+            context.getDiagnosisId(), progressPercentage, message);
 
-            context.getProgressCallback().accept(progressResponse);
-            log.debug("Progress reported: {}% - {}", progressPercentage, message);
+        if (context.getProgressCallback() != null) {
+            try {
+                DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
+                        .diagnosisId(context.getDiagnosisId())
+                        .currentStep(DiagnosisStep.JOB_MATCHING)
+                        .progressPercentage(progressPercentage)
+                        .status(DiagnosisStatus.IN_PROGRESS)
+                        .currentMessage(message)
+                        .build();
+
+                context.getProgressCallback().accept(progressResponse);
+                log.debug("[CompetencyAnalysisProcessor.reportProgress] EXIT - progress sent successfully");
+            } catch (Exception e) {
+                log.error("[CompetencyAnalysisProcessor.reportProgress] EXCEPTION - diagnosisId: {}, error: {}",
+                    context.getDiagnosisId(), e.getMessage(), e);
+            }
+        } else {
+            log.warn("[CompetencyAnalysisProcessor.reportProgress] No progress callback available - diagnosisId: {}",
+                context.getDiagnosisId());
         }
     }
 

@@ -40,22 +40,40 @@ public class DiagnosisStateService {
      */
     @Transactional
     public Long resumeDiagnosisAfterUserInput(Long diagnosisId) {
-        DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
-                .orElseThrow(() -> new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId));
+        log.info("[DiagnosisStateService.resumeDiagnosisAfterUserInput] ENTER - diagnosisId: {}", diagnosisId);
+        long startTime = System.currentTimeMillis();
 
-        Long memberId = diagnosisResult.getMemberId();
-        log.info("Finding memberId for diagnosisId: {}", diagnosisId);
+        try {
+            DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
+                    .orElseThrow(() -> {
+                        log.error("[DiagnosisStateService.resumeDiagnosisAfterUserInput] Diagnosis not found - diagnosisId: {}", diagnosisId);
+                        return new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId);
+                    });
 
-        // 진단 상태를 IN_PROGRESS로 변경 (도메인 메서드 사용)
-        log.info("Updating diagnosis status for diagnosisId: {} to IN_PROGRESS", diagnosisId);
-        if (diagnosisResult.getStatus() == DiagnosisStatus.PENDING) {
-            diagnosisResult.startDiagnosis();
-        } else if (diagnosisResult.getStatus() == DiagnosisStatus.AWAITING_USER_INPUT) {
-            diagnosisResult.resumeDiagnosis();
+            Long memberId = diagnosisResult.getMemberId();
+            DiagnosisStatus currentStatus = diagnosisResult.getStatus();
+            log.info("[DiagnosisStateService.resumeDiagnosisAfterUserInput] Found memberId: {} with status: {}",
+                memberId, currentStatus);
+
+            // 진단 상태를 IN_PROGRESS로 변경 (도메인 메서드 사용)
+            log.debug("[DiagnosisStateService.resumeDiagnosisAfterUserInput] Updating diagnosis status to IN_PROGRESS");
+            if (diagnosisResult.getStatus() == DiagnosisStatus.PENDING) {
+                diagnosisResult.startDiagnosis();
+            } else if (diagnosisResult.getStatus() == DiagnosisStatus.AWAITING_USER_INPUT) {
+                diagnosisResult.resumeDiagnosis();
+            }
+            diagnosisResultRepository.save(diagnosisResult);
+
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("[DiagnosisStateService.resumeDiagnosisAfterUserInput] EXIT - memberId: {}, duration: {}ms", memberId, duration);
+            return memberId;
+
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("[DiagnosisStateService.resumeDiagnosisAfterUserInput] EXCEPTION - diagnosisId: {}, duration: {}ms, error: {}",
+                diagnosisId, duration, e.getMessage(), e);
+            throw e;
         }
-        diagnosisResultRepository.save(diagnosisResult);
-
-        return memberId;
     }
 
     /**

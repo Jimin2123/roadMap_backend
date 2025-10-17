@@ -82,12 +82,17 @@ public class DiagnosisEmitterManager {
      * @return SseEmitter
      */
     public SseEmitter createEmitter(Long diagnosisId) {
+        log.info("[DiagnosisEmitterManager.createEmitter] ENTER - diagnosisId: {}, currentEmitters: {}",
+            diagnosisId, emitters.size());
+        long startTime = System.currentTimeMillis();
+
         // 최대 emitter 개수 확인 및 정리
         if (emitters.size() >= MAX_EMITTERS) {
-            log.warn("Maximum emitters limit reached ({}). Forcing cleanup of oldest emitters.", MAX_EMITTERS);
+            log.warn("[DiagnosisEmitterManager.createEmitter] Maximum emitters limit reached ({}). Forcing cleanup of oldest emitters.", MAX_EMITTERS);
             forceCleanupOldestEmitters(MAX_EMITTERS / 10); // 10% 정리
         }
 
+        log.debug("[DiagnosisEmitterManager.createEmitter] Creating new SseEmitter with timeout: {}ms", DEFAULT_TIMEOUT);
         SseEmitter emitter = new SseEmitter(DEFAULT_TIMEOUT);
         EmitterWrapper wrapper = new EmitterWrapper(emitter);
 
@@ -96,32 +101,33 @@ public class DiagnosisEmitterManager {
             wrapper.markCompleted();
             EmitterWrapper removed = emitters.remove(diagnosisId);
             if (removed != null) {
-                log.debug("Emitter removed from map for diagnosisId: {}", diagnosisId);
+                log.debug("[DiagnosisEmitterManager.createEmitter] Emitter removed from map for diagnosisId: {}", diagnosisId);
             }
         };
 
         // 완료 시 맵에서 제거
         emitter.onCompletion(() -> {
-            log.info("SSE emitter completed for diagnosisId: {}", diagnosisId);
+            log.info("[DiagnosisEmitterManager.createEmitter] SSE emitter completed for diagnosisId: {}", diagnosisId);
             removeAction.run();
         });
 
         // 타임아웃 시 맵에서 제거
         emitter.onTimeout(() -> {
-            log.warn("SSE emitter timed out for diagnosisId: {}", diagnosisId);
+            log.warn("[DiagnosisEmitterManager.createEmitter] SSE emitter timed out for diagnosisId: {}", diagnosisId);
             removeAction.run();
         });
 
         // 에러 발생 시 맵에서 제거
         emitter.onError((e) -> {
-            log.error("SSE emitter error for diagnosisId: {}", diagnosisId, e);
+            log.error("[DiagnosisEmitterManager.createEmitter] SSE emitter error for diagnosisId: {}", diagnosisId, e);
             removeAction.run();
         });
 
         // 맵에 등록
         emitters.put(diagnosisId, wrapper);
-        log.info("SSE emitter created and registered for diagnosisId: {} (total emitters: {})",
-                diagnosisId, emitters.size());
+        long duration = System.currentTimeMillis() - startTime;
+        log.info("[DiagnosisEmitterManager.createEmitter] EXIT - diagnosisId: {}, duration: {}ms, totalEmitters: {}",
+                diagnosisId, duration, emitters.size());
 
         return emitter;
     }

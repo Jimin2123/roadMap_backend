@@ -1,11 +1,9 @@
 package com.shingu.roadmap.diagnosis.service.pipeline;
 
-import com.shingu.roadmap.apis.careernet.dto.request.JobInformationRequest;
-import com.shingu.roadmap.apis.careernet.dto.response.JobDetailResponse;
-import com.shingu.roadmap.apis.careernet.service.CareerNetService;
+import com.shingu.roadmap.apis.careernet.dto.response.CareerNetIntegratedResponse;
+import com.shingu.roadmap.apis.careernet.service.CareerNetIntegrationService;
 import com.shingu.roadmap.apis.ncs.domain.NcsOccupation;
 import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
-import com.shingu.roadmap.apis.openai.service.OpenAiService;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
 import com.shingu.roadmap.diagnosis.dto.common.*;
@@ -35,13 +33,14 @@ import java.util.Map;
 @Slf4j
 public class ReportGenerationProcessor implements DiagnosisProcessor {
 
-    private final CareerNetService careerNetService;
-    private final OpenAiService openAiService;
+    private final CareerNetIntegrationService careerNetIntegrationService;
     private final NcsOccupationRepository ncsOccupationRepository;
 
     @Override
     public DiagnosisContext process(DiagnosisContext context) {
-        log.info("[ReportGenerationProcessor] Starting report generation for memberId: {}", context.getMemberId());
+        log.info("[ReportGenerationProcessor.process] ENTER - memberId: {}, diagnosisId: {}",
+            context.getMemberId(), context.getDiagnosisId());
+        long totalStartTime = System.currentTimeMillis();
 
         try {
             NcsAnalysisResponse ncsAnalysis = context.getNcsAnalysisResponse();
@@ -49,25 +48,45 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
             String careerLevel = context.getCareerLevel();
 
             if (ncsAnalysis == null || ksaAnalyses == null || ksaAnalyses.isEmpty()) {
+                log.error("[ReportGenerationProcessor.process] Required analysis results missing - aborting");
                 throw new IllegalArgumentException("NCS and KSA analysis results are required for report generation");
             }
+            log.debug("[ReportGenerationProcessor.process] Input data loaded - ncsCandidates: {}, ksaAnalyses: {}, careerLevel: {}",
+                ncsAnalysis.candidates().size(), ksaAnalyses.size(), careerLevel);
 
             reportProgress(context, 66, "커리어넷 직업 정보를 조회하고 있습니다.");
 
             // 3-1. 커리어넷 직업 정보 조회 및 보강
+            log.debug("[ReportGenerationProcessor.process] Starting CareerNet enrichment");
+            long enrichStartTime = System.currentTimeMillis();
             NcsAnalysisResponse enrichedNcsAnalysis = enrichWithCareerNetInfo(ncsAnalysis, context);
+            long enrichDuration = System.currentTimeMillis() - enrichStartTime;
+            log.info("[ReportGenerationProcessor.process] CareerNet enrichment completed in {}ms", enrichDuration);
 
             reportProgress(context, 85, "레이더 차트 데이터를 생성하고 있습니다.");
 
             // 3-2. 레이더 차트 데이터 생성
+            log.debug("[ReportGenerationProcessor.process] Generating radar chart data");
+            long radarStartTime = System.currentTimeMillis();
             RadarChartData radarChartData = generateRadarChartData(ksaAnalyses);
+            long radarDuration = System.currentTimeMillis() - radarStartTime;
+            log.info("[ReportGenerationProcessor.process] Radar chart generated in {}ms - axes: {}, profiles: {}",
+                radarDuration,
+                radarChartData.competencyAxes() != null ? radarChartData.competencyAxes().size() : 0,
+                radarChartData.targetNcsProfiles() != null ? radarChartData.targetNcsProfiles().size() : 0);
 
             reportProgress(context, 95, "종합 요약을 생성하고 있습니다.");
 
             // 3-3. 종합 요약 생성
+            log.debug("[ReportGenerationProcessor.process] Generating summary");
+            long summaryStartTime = System.currentTimeMillis();
             String summary = generateSummary(enrichedNcsAnalysis, ksaAnalyses, careerLevel);
+            long summaryDuration = System.currentTimeMillis() - summaryStartTime;
+            log.info("[ReportGenerationProcessor.process] Summary generated in {}ms - length: {}",
+                summaryDuration, summary.length());
 
             // 3-4. 최종 리포트 생성
+            log.debug("[ReportGenerationProcessor.process] Building final diagnosis result");
             DiagnosisResultResponse diagnosisResult = DiagnosisResultResponse.builder()
                     .diagnosisId(null) // 실제 저장 시 할당
                     .summary(summary)
@@ -81,12 +100,16 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
             reportProgress(context, 100, "진단 리포트가 완료되었습니다.");
 
-            log.info("[ReportGenerationProcessor] Completed. Report generated successfully.");
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.info("[ReportGenerationProcessor.process] EXIT (SUCCESS) - totalDuration: {}ms, confidenceScore: {}, summaryLength: {}",
+                    totalDuration, enrichedNcsAnalysis.overallConfidence(), summary.length());
 
             return context;
 
         } catch (Exception e) {
-            log.error("[ReportGenerationProcessor] Failed to process: {}", e.getMessage(), e);
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.error("[ReportGenerationProcessor.process] EXCEPTION - memberId: {}, totalDuration: {}ms, error: {}",
+                context.getMemberId(), totalDuration, e.getMessage(), e);
             context.setSuccess(false);
             context.setErrorMessage("리포트 생성 중 오류가 발생했습니다: " + e.getMessage());
             return context;
@@ -94,7 +117,7 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
     }
 
     /**
-     * 커리어넷 직업 정보 및 KSA 분석 결과로 NCS 분석 결과 보강
+     * 커리어넷 통합 정보 및 KSA 분석 결과로 NCS 분석 결과 보강
      */
     private NcsAnalysisResponse enrichWithCareerNetInfo(NcsAnalysisResponse ncsAnalysis, DiagnosisContext context) {
         List<NcsRecommendationCandidate> enrichedCandidates = new ArrayList<>();
@@ -113,26 +136,127 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
         for (NcsRecommendationCandidate candidate : candidates) {
             try {
-                // 1. 커리어넷 직업 정보 조회
-                CareerNetJobInfo careerNetJobInfo = null;
-                JobDetailResponse jobDetail = fetchCareerNetJobInfo(candidate.ncsCode());
+                // 1. NCS Occupation 조회
+                NcsOccupation ncsOccupation = ncsOccupationRepository.findById(candidate.ncsCode()).orElse(null);
 
-                if (jobDetail != null && jobDetail.getContent() != null) {
-                    var jobInfo = jobDetail.getContent();
-
-                    careerNetJobInfo = CareerNetJobInfo.builder()
-                            .jobName(jobInfo.getJob())
-                            .prospect(jobInfo.getProspect())
-                            .salaryLevel(jobInfo.getSalery())
-                            .build();
+                if (ncsOccupation == null) {
+                    log.warn("NCS occupation not found for code: {}", candidate.ncsCode());
+                    enrichedCandidates.add(candidate);
+                    processedCount++;
+                    continue;
                 }
 
-                // 2. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
+                // 2. 커리어넷 통합 정보 조회 (Job Info, Encyclopedia, Counseling Cases)
+                CareerNetIntegratedResponse integratedResponse = careerNetIntegrationService
+                        .getIntegratedCareerInfo(ncsOccupation)
+                        .block();
+
+                CareerNetJobInfo careerNetJobInfo = null;
+
+                // 3. Job Info 추출 및 매핑
+                if (integratedResponse != null && integratedResponse.jobInfoDetail() != null
+                        && integratedResponse.jobInfoDetail().dataSearch() != null
+                        && integratedResponse.jobInfoDetail().dataSearch().content() != null
+                        && !integratedResponse.jobInfoDetail().dataSearch().content().isEmpty()) {
+                    var jobInfo = integratedResponse.jobInfoDetail().dataSearch().content().getFirst();
+
+                    // 직업 전망
+                    String prospect = (jobInfo.jobPossibility() != null && !jobInfo.jobPossibility().isEmpty()) ?
+                            jobInfo.jobPossibility().getFirst().possibility() : null;
+
+                    // 취업 현황 정보 추출
+                    String employmentMethod = null;
+                    String employmentStatus = null;
+                    String salaryLevel = null;
+                    if (jobInfo.stateOfEmployment() != null) {
+                        for (var emp : jobInfo.stateOfEmployment()) {
+                            if (emp.empWay() != null && !emp.empWay().isEmpty()) {
+                                employmentMethod = emp.empWay();
+                            }
+                            if (emp.employment() != null && !emp.employment().isEmpty()) {
+                                employmentStatus = emp.employment();
+                            }
+                            if (emp.salary() != null && !emp.salary().isEmpty()) {
+                                salaryLevel = emp.salary();
+                            }
+                        }
+                    }
+
+                    // 준비 방법 정보 추출
+                    String educationPath = null;
+                    String trainingInfo = null;
+                    String relatedCertifications = null;
+                    if (jobInfo.preparationWay() != null) {
+                        for (var prep : jobInfo.preparationWay()) {
+                            if (prep.preparation() != null && !prep.preparation().isEmpty()) {
+                                educationPath = prep.preparation();
+                            }
+                            if (prep.training() != null && !prep.training().isEmpty()) {
+                                trainingInfo = prep.training();
+                            }
+                            if (prep.certification() != null && !prep.certification().isEmpty()) {
+                                relatedCertifications = prep.certification();
+                            }
+                        }
+                    }
+
+                    // 관련 학과 추출
+                    List<String> relatedMajors = null;
+                    if (jobInfo.capacityMajor() != null && !jobInfo.capacityMajor().isEmpty()) {
+                        var capacityMajor = jobInfo.capacityMajor().getFirst();
+                        if (capacityMajor.majors() != null) {
+                            relatedMajors = capacityMajor.majors().stream()
+                                    .map(major -> major.majorName())
+                                    .filter(name -> name != null && !name.isEmpty())
+                                    .toList();
+                        }
+                    }
+
+                    careerNetJobInfo = CareerNetJobInfo.builder()
+                            .jobName(jobInfo.job())
+                            .summary(jobInfo.summary())
+                            .coreAbilities(jobInfo.ability())
+                            .aptitudeAndInterest(jobInfo.aptitude())
+                            .similarJobs(jobInfo.similarJob())
+                            .relatedCertifications(relatedCertifications)
+                            .relatedMajors(relatedMajors != null && !relatedMajors.isEmpty() ? relatedMajors : null)
+                            .employmentMethod(employmentMethod)
+                            .employmentStatus(employmentStatus)
+                            .salaryLevel(salaryLevel)
+                            .prospect(prospect)
+                            .educationPath(educationPath)
+                            .trainingInfo(trainingInfo)
+                            .build();
+
+                    log.debug("CareerNet info fetched successfully for NCS code {} with {} fields populated",
+                            candidate.ncsCode(),
+                            countNonNullFields(careerNetJobInfo));
+                }
+
+                // 4. Counseling Cases 추출 및 변환
+                List<CounselingCaseInfo> counselingCases = null;
+                if (integratedResponse != null && integratedResponse.counselingCases() != null
+                        && !integratedResponse.counselingCases().isEmpty()) {
+                    counselingCases = integratedResponse.counselingCases().stream()
+                            .map(enrichedCase -> CounselingCaseInfo.builder()
+                                    .title(enrichedCase.memo() != null ? enrichedCase.memo() : "상담 사례")
+                                    .question(enrichedCase.question())
+                                    .answer(enrichedCase.answer())
+                                    .category(enrichedCase.gubun())
+                                    .build())
+                            .toList();
+
+                    log.debug("Counseling cases fetched successfully for NCS code {}: {} cases",
+                            candidate.ncsCode(), counselingCases.size());
+                }
+
+                // 5. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
                 KsaAnalysisResponse ksaAnalysis = ksaByNcsCode.get(candidate.ncsCode());
 
-                // 3. 후보 정보에 커리어넷 정보 및 KSA 분석 결과 추가
+                // 6. 후보 정보에 커리어넷 정보, 상담 사례 및 KSA 분석 결과 추가
                 enrichedCandidates.add(candidate.toBuilder()
                         .careerNetJobInfo(careerNetJobInfo)
+                        .counselingCases(counselingCases)
                         .ksaAnalysis(ksaAnalysis)
                         .build());
 
@@ -155,56 +279,6 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
     }
 
     /**
-     * 커리어넷 직업 정보 조회
-     * NCS 코드를 AI 기반으로 CareerNet 직업 코드로 매핑하여 조회
-     */
-    private JobDetailResponse fetchCareerNetJobInfo(String ncsCode) {
-        try {
-            // 1. NCS 정보 조회
-            NcsOccupation ncsOccupation = ncsOccupationRepository.findById(ncsCode).orElse(null);
-
-            if (ncsOccupation == null) {
-                log.warn("NCS occupation not found for code: {}", ncsCode);
-                return null;
-            }
-
-            // 2. AI 기반 매핑으로 CareerNet 직업 코드 획득
-            String careerNetJobCode = openAiService.mapNcsToCareerNetJobCode(
-                    ncsCode,
-                    ncsOccupation.getDutyNm(),
-                    ncsOccupation.getDutyDef()
-            ).block();  // 동기 변환
-
-            if (careerNetJobCode == null) {
-                log.debug("AI mapping returned null for NCS code {}. Using NCS code as fallback", ncsCode);
-                careerNetJobCode = ncsCode;  // Fallback
-            }
-
-            // 3. CareerNet API 호출
-            JobInformationRequest request = new JobInformationRequest();
-            request.setSvcType("api");
-            request.setSvcCode("JOB_VIEW");
-            request.setContentType("json");
-            request.setGubun("job_dic_list");
-            request.setJobdicSeq(careerNetJobCode);
-
-            JobDetailResponse response = careerNetService.getJobInformation(request);
-
-            if (response != null) {
-                log.debug("Successfully fetched CareerNet job info for NCS code {} (mapped to {})",
-                        ncsCode, careerNetJobCode);
-            }
-
-            return response;
-
-        } catch (Exception e) {
-            log.error("Failed to fetch job information from CareerNet for NCS code {}: {}",
-                    ncsCode, e.getMessage());
-            return null;
-        }
-    }
-
-    /**
      * 레이더 차트 데이터 생성
      */
     private RadarChartData generateRadarChartData(List<KsaAnalysisResponse> ksaAnalyses) {
@@ -219,18 +293,18 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // 첫 번째 KSA 분석 결과 기준
         KsaAnalysisResponse ksaAnalysis = ksaAnalyses.getFirst();
 
-        // 1. 공통 역량 축 생성 (모든 KSA 항목명)
+        // 1. 공통 역량 축 생성 (itemDescription 사용 - 실제 역량명)
         List<String> competencyAxes = new ArrayList<>();
         competencyAxes.addAll(ksaAnalysis.knowledgeItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(5)
                 .toList());
         competencyAxes.addAll(ksaAnalysis.skillItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(5)
                 .toList());
         competencyAxes.addAll(ksaAnalysis.attitudeItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(3)
                 .toList());
 
@@ -240,17 +314,23 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // Knowledge 점수
         ksaAnalysis.knowledgeItems().stream()
                 .limit(5)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         // Skill 점수
         ksaAnalysis.skillItems().stream()
                 .limit(5)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         // Attitude 점수
         ksaAnalysis.attitudeItems().stream()
                 .limit(3)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         CompetencyProfile userProfile = CompetencyProfile.builder()
                 .profileName("현재 보유 역량")
@@ -263,17 +343,23 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // Knowledge 목표 점수
         ksaAnalysis.knowledgeItems().stream()
                 .limit(5)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // Skill 목표 점수
         ksaAnalysis.skillItems().stream()
                 .limit(5)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // Attitude 목표 점수
         ksaAnalysis.attitudeItems().stream()
                 .limit(3)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // 일치율 계산
         double matchRate = calculateMatchRate(userCompetencyScores, targetCompetencyScores);
@@ -290,6 +376,19 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                 .targetNcsProfiles(List.of(targetProfile))
                 .competencyAxes(competencyAxes)
                 .build();
+    }
+
+    /**
+     * 역량명 정리 (번호 접두사 제거)
+     * 예: "1.유스케이스" → "유스케이스"
+     */
+    private String cleanCompetencyName(String itemDescription) {
+        if (itemDescription == null || itemDescription.isEmpty()) {
+            return itemDescription;
+        }
+
+        // "1.", "2." 같은 번호 접두사 제거
+        return itemDescription.replaceFirst("^\\d+\\.", "").trim();
     }
 
     /**
@@ -435,20 +534,55 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
     }
 
     /**
+     * CareerNetJobInfo의 non-null 필드 개수 카운트
+     */
+    private int countNonNullFields(CareerNetJobInfo jobInfo) {
+        if (jobInfo == null) return 0;
+
+        int count = 0;
+        if (jobInfo.jobName() != null) count++;
+        if (jobInfo.summary() != null) count++;
+        if (jobInfo.coreAbilities() != null) count++;
+        if (jobInfo.aptitudeAndInterest() != null) count++;
+        if (jobInfo.similarJobs() != null) count++;
+        if (jobInfo.relatedCertifications() != null) count++;
+        if (jobInfo.relatedMajors() != null) count++;
+        if (jobInfo.employmentMethod() != null) count++;
+        if (jobInfo.employmentStatus() != null) count++;
+        if (jobInfo.salaryLevel() != null) count++;
+        if (jobInfo.prospect() != null) count++;
+        if (jobInfo.educationPath() != null) count++;
+        if (jobInfo.trainingInfo() != null) count++;
+
+        return count;
+    }
+
+    /**
      * 진행 상황을 SSE로 전송하는 헬퍼 메서드
      */
     private void reportProgress(DiagnosisContext context, int progressPercentage, String message) {
-        if (context.getProgressCallback() != null) {
-            DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
-                    .diagnosisId(context.getDiagnosisId())
-                    .currentStep(DiagnosisStep.FINAL_REPORT)
-                    .progressPercentage(progressPercentage)
-                    .status(DiagnosisStatus.IN_PROGRESS)
-                    .currentMessage(message)
-                    .build();
+        log.debug("[ReportGenerationProcessor.reportProgress] ENTER - diagnosisId: {}, percentage: {}%, message: {}",
+            context.getDiagnosisId(), progressPercentage, message);
 
-            context.getProgressCallback().accept(progressResponse);
-            log.debug("Progress reported: {}% - {}", progressPercentage, message);
+        if (context.getProgressCallback() != null) {
+            try {
+                DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
+                        .diagnosisId(context.getDiagnosisId())
+                        .currentStep(DiagnosisStep.FINAL_REPORT)
+                        .progressPercentage(progressPercentage)
+                        .status(DiagnosisStatus.IN_PROGRESS)
+                        .currentMessage(message)
+                        .build();
+
+                context.getProgressCallback().accept(progressResponse);
+                log.debug("[ReportGenerationProcessor.reportProgress] EXIT - progress sent successfully");
+            } catch (Exception e) {
+                log.error("[ReportGenerationProcessor.reportProgress] EXCEPTION - diagnosisId: {}, error: {}",
+                    context.getDiagnosisId(), e.getMessage(), e);
+            }
+        } else {
+            log.warn("[ReportGenerationProcessor.reportProgress] No progress callback available - diagnosisId: {}",
+                context.getDiagnosisId());
         }
     }
 

@@ -42,49 +42,75 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
 
     @Override
     public DiagnosisContext process(DiagnosisContext context) {
-        log.info("[NcsRecommendationProcessor] Starting NCS recommendation for memberId: {}", context.getMemberId());
+        log.info("[NcsRecommendationProcessor.process] ENTER - memberId: {}, diagnosisId: {}",
+            context.getMemberId(), context.getDiagnosisId());
+        long totalStartTime = System.currentTimeMillis();
 
         try {
             Profile profile = context.getProfile();
             if (profile == null) {
+                log.error("[NcsRecommendationProcessor.process] Profile is null - aborting");
                 throw new IllegalArgumentException("Profile is required for NCS recommendation");
             }
+            log.debug("[NcsRecommendationProcessor.process] Profile loaded - skillCount: {}, projectCount: {}",
+                profile.getProfileSkills() != null ? profile.getProfileSkills().size() : 0,
+                profile.getResume() != null && profile.getResume().getProjects() != null ?
+                    profile.getResume().getProjects().size() : 0);
 
             // 1-1. AI를 통한 NCS 코드 추천
+            log.debug("[NcsRecommendationProcessor.process] Starting AI recommendation");
             Set<String> recommendedNcsCodes;
+            long aiStartTime = System.currentTimeMillis();
             try {
                 recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(profile).block();
+                long aiDuration = System.currentTimeMillis() - aiStartTime;
+                log.info("[NcsRecommendationProcessor.process] AI recommendation completed in {}ms - recommendedCount: {}",
+                    aiDuration, recommendedNcsCodes != null ? recommendedNcsCodes.size() : 0);
             } catch (Exception e) {
-                log.error("[NcsRecommendationProcessor] AI service error during NCS code recommendation: {}",
-                        e.getMessage(), e);
+                long aiDuration = System.currentTimeMillis() - aiStartTime;
+                log.error("[NcsRecommendationProcessor.process] AI service error after {}ms - error: {}",
+                        aiDuration, e.getMessage(), e);
                 context.setSuccess(false);
                 context.setErrorMessage("AI 서비스 오류로 인해 직무 추천에 실패했습니다. 잠시 후 다시 시도해주세요.");
+                long totalDuration = System.currentTimeMillis() - totalStartTime;
+                log.info("[NcsRecommendationProcessor.process] EXIT (AI FAILURE) - totalDuration: {}ms", totalDuration);
                 return context;
             }
 
             if (recommendedNcsCodes == null || recommendedNcsCodes.isEmpty()) {
-                log.warn("[NcsRecommendationProcessor] No NCS codes recommended by AI (empty result - not an error)");
+                log.warn("[NcsRecommendationProcessor.process] No NCS codes recommended by AI (empty result)");
                 context.setSuccess(false);
                 context.setErrorMessage("프로필 정보를 기반으로 적합한 직무를 찾지 못했습니다. 프로필을 보완해주세요.");
+                long totalDuration = System.currentTimeMillis() - totalStartTime;
+                log.info("[NcsRecommendationProcessor.process] EXIT (EMPTY RESULT) - totalDuration: {}ms", totalDuration);
                 return context;
             }
 
-            log.info("AI recommended {} NCS codes: {}", recommendedNcsCodes.size(), recommendedNcsCodes);
+            log.info("[NcsRecommendationProcessor.process] AI recommended {} NCS codes: {}",
+                recommendedNcsCodes.size(), recommendedNcsCodes);
             reportProgress(context, 10, "AI가 추천한 NCS 코드를 분석했습니다.");
 
             // 1-2. NCS API를 통한 유효성 검증 및 등록
+            log.debug("[NcsRecommendationProcessor.process] Starting NCS API validation");
+            long validationStartTime = System.currentTimeMillis();
             var validOccupations = ncsApiService.filterValidNcsCodes(recommendedNcsCodes);
+            long validationDuration = System.currentTimeMillis() - validationStartTime;
+            log.info("[NcsRecommendationProcessor.process] NCS API validation completed in {}ms - validCount: {}/{}",
+                validationDuration, validOccupations.size(), recommendedNcsCodes.size());
 
             if (validOccupations.isEmpty()) {
-                log.warn("All recommended NCS codes are invalid");
+                log.warn("[NcsRecommendationProcessor.process] All recommended NCS codes are invalid");
                 context.setSuccess(false);
                 context.setErrorMessage("추천된 직무 코드가 유효하지 않습니다.");
+                long totalDuration = System.currentTimeMillis() - totalStartTime;
+                log.info("[NcsRecommendationProcessor.process] EXIT (INVALID CODES) - totalDuration: {}ms", totalDuration);
                 return context;
             }
 
             reportProgress(context, 20, "NCS 코드 유효성 검증이 완료되었습니다.");
 
             // 1-3. 능력단위 기반 교차 검증 및 후보 생성
+            log.debug("[NcsRecommendationProcessor.process] Starting candidate building with competency unit validation");
             List<NcsRecommendationCandidate> candidates = new ArrayList<>();
             var validOccupationsList = validOccupations.stream()
                     .limit(MAX_RECOMMENDATION_COUNT)
@@ -92,11 +118,26 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
 
             int totalOccupations = validOccupationsList.size();
             int processedCount = 0;
+            log.info("[NcsRecommendationProcessor.process] Processing {} valid occupations (limited to {})",
+                totalOccupations, MAX_RECOMMENDATION_COUNT);
 
+            long candidateBuildingStartTime = System.currentTimeMillis();
             for (var occupation : validOccupationsList) {
+                log.debug("[NcsRecommendationProcessor.process] Building candidate {}/{} - ncsCode: {}",
+                    processedCount + 1, totalOccupations, occupation.getDutyCd());
+                long candidateStartTime = System.currentTimeMillis();
                 Optional<NcsRecommendationCandidate> candidate =
                     buildCandidateWithCompUnitValidation(occupation.getDutyCd(), profile, context);
-                candidate.ifPresent(candidates::add);
+                long candidateDuration = System.currentTimeMillis() - candidateStartTime;
+
+                if (candidate.isPresent()) {
+                    candidates.add(candidate.get());
+                    log.debug("[NcsRecommendationProcessor.process] Candidate built successfully in {}ms - ncsCode: {}, confidence: {}",
+                        candidateDuration, candidate.get().ncsCode(), candidate.get().confidenceScore());
+                } else {
+                    log.warn("[NcsRecommendationProcessor.process] Failed to build candidate in {}ms - ncsCode: {}",
+                        candidateDuration, occupation.getDutyCd());
+                }
 
                 processedCount++;
                 // 20% ~ 28% 범위에서 진행률 업데이트
@@ -104,24 +145,37 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                 reportProgress(context, progress,
                     String.format("직무 후보 검증 중... (%d/%d)", processedCount, totalOccupations));
             }
+            long candidateBuildingDuration = System.currentTimeMillis() - candidateBuildingStartTime;
+            log.info("[NcsRecommendationProcessor.process] Candidate building completed in {}ms - candidatesBuilt: {}/{}",
+                candidateBuildingDuration, candidates.size(), totalOccupations);
 
+            // 신뢰도 순 정렬
+            log.debug("[NcsRecommendationProcessor.process] Sorting candidates by confidence score");
             candidates = candidates.stream()
                     .sorted(Comparator.comparing(NcsRecommendationCandidate::confidenceScore).reversed())
                     .collect(Collectors.toList());
+            log.debug("[NcsRecommendationProcessor.process] Top candidate: ncsCode={}, confidence={}",
+                candidates.isEmpty() ? "none" : candidates.getFirst().ncsCode(),
+                candidates.isEmpty() ? 0.0 : candidates.getFirst().confidenceScore());
 
             if (candidates.isEmpty()) {
-                log.warn("Failed to build any valid candidates");
+                log.warn("[NcsRecommendationProcessor.process] Failed to build any valid candidates");
                 context.setSuccess(false);
                 context.setErrorMessage("직무 후보 생성에 실패했습니다.");
+                long totalDuration = System.currentTimeMillis() - totalStartTime;
+                log.info("[NcsRecommendationProcessor.process] EXIT (NO CANDIDATES) - totalDuration: {}ms", totalDuration);
                 return context;
             }
 
             reportProgress(context, 28, "신뢰도 평가를 시작합니다.");
 
             // 1-4. 신뢰도 기반 자동 선택 또는 사용자 선택 요청
+            log.debug("[NcsRecommendationProcessor.process] Calculating overall confidence");
             double overallConfidence = calculateOverallConfidence(candidates);
             boolean requiresUserSelection = overallConfidence < HIGH_CONFIDENCE_THRESHOLD;
             String selectedNcsCode = !requiresUserSelection ? candidates.getFirst().ncsCode() : null;
+            log.info("[NcsRecommendationProcessor.process] Overall confidence: {} (threshold: {}), requiresUserSelection: {}, selectedNcsCode: {}",
+                overallConfidence, HIGH_CONFIDENCE_THRESHOLD, requiresUserSelection, selectedNcsCode != null ? selectedNcsCode : "none");
 
             NcsAnalysisResponse ncsAnalysisResponse = NcsAnalysisResponse.builder()
                     .candidates(candidates)
@@ -135,13 +189,16 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
 
             reportProgress(context, 33, "NCS 직무 추천이 완료되었습니다.");
 
-            log.info("[NcsRecommendationProcessor] Completed. Confidence: {}, Requires user selection: {}",
-                    overallConfidence, requiresUserSelection);
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.info("[NcsRecommendationProcessor.process] EXIT (SUCCESS) - totalDuration: {}ms, candidatesCount: {}, overallConfidence: {}, requiresUserSelection: {}",
+                    totalDuration, candidates.size(), overallConfidence, requiresUserSelection);
 
             return context;
 
         } catch (Exception e) {
-            log.error("[NcsRecommendationProcessor] Failed to process: {}", e.getMessage(), e);
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+            log.error("[NcsRecommendationProcessor.process] EXCEPTION - memberId: {}, totalDuration: {}ms, error: {}",
+                context.getMemberId(), totalDuration, e.getMessage(), e);
             context.setSuccess(false);
             context.setErrorMessage("NCS 직무 추천 중 오류가 발생했습니다: " + e.getMessage());
             return context;
@@ -153,32 +210,56 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
      */
     private Optional<NcsRecommendationCandidate> buildCandidateWithCompUnitValidation(
             String ncsCode, Profile profile, DiagnosisContext context) {
+        log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] ENTER - ncsCode: {}", ncsCode);
+        long startTime = System.currentTimeMillis();
+
         try {
             // NCS 직무 정보 조회
-            NcsOccupationResponse occupationResponse = ncsApiService.fetchAndRegisterNcsOccupation(ncsCode)
-                    ? getNcsOccupationInfo(ncsCode)
-                    : null;
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Fetching and registering NCS occupation");
+            long fetchStartTime = System.currentTimeMillis();
+            boolean registered = ncsApiService.fetchAndRegisterNcsOccupation(ncsCode);
+            long fetchDuration = System.currentTimeMillis() - fetchStartTime;
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Fetch and register completed in {}ms - registered: {}",
+                fetchDuration, registered);
+
+            NcsOccupationResponse occupationResponse = registered ? getNcsOccupationInfo(ncsCode) : null;
 
             if (occupationResponse == null || occupationResponse.data() == null || occupationResponse.data().isEmpty()) {
-                log.warn("Failed to fetch occupation info for NCS code: {}", ncsCode);
+                long duration = System.currentTimeMillis() - startTime;
+                log.warn("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Failed to fetch occupation info - ncsCode: {}, duration: {}ms",
+                    ncsCode, duration);
                 return Optional.empty();
             }
 
             var occupationItem = occupationResponse.data().getFirst();
             String ncsName = occupationItem.dutyNm();
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Occupation info retrieved - ncsName: {}", ncsName);
 
             // 능력단위 정보 조회 (교차 검증용)
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Fetching competency units");
+            long compUnitStartTime = System.currentTimeMillis();
             NcsCompUnitResponse compUnitResponse = ncsApiService.getNcsCompUnit(ncsCode);
             List<String> compUnitNames = extractCompUnitNames(compUnitResponse);
+            long compUnitDuration = System.currentTimeMillis() - compUnitStartTime;
+            log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Competency units fetched in {}ms - count: {}",
+                compUnitDuration, compUnitNames.size());
 
             // 규칙 기반 신뢰도 계산
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Calculating rule-based confidence");
+            long ruleStartTime = System.currentTimeMillis();
             double ruleBasedConfidence = calculateRuleBasedConfidence(profile, compUnitNames);
+            long ruleDuration = System.currentTimeMillis() - ruleStartTime;
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Rule-based confidence calculated in {}ms - score: {}",
+                ruleDuration, ruleBasedConfidence);
 
             // AI 기반 신뢰도 평가
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Starting AI confidence evaluation");
+            long aiEvalStartTime = System.currentTimeMillis();
             OpenAiService.NcsConfidenceEvaluation aiEvaluation = openAiService
                     .evaluateNcsMatchConfidence(ncsCode, ncsName, compUnitNames, profile)
                     .onErrorResume(e -> {
-                        log.warn("AI confidence evaluation failed for {}: {}", ncsCode, e.getMessage());
+                        log.warn("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] AI evaluation failed for {} - error: {}, using fallback",
+                            ncsCode, e.getMessage());
                         return reactor.core.publisher.Mono.just(new OpenAiService.NcsConfidenceEvaluation(
                                 ruleBasedConfidence,
                                 "ADEQUATE",
@@ -188,27 +269,38 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                         ));
                     })
                     .block();
+            long aiEvalDuration = System.currentTimeMillis() - aiEvalStartTime;
+            log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] AI evaluation completed in {}ms - aiScore: {}, matchLevel: {}",
+                aiEvalDuration, Objects.requireNonNull(aiEvaluation).confidenceScore(), aiEvaluation.matchLevel());
 
             // 최종 신뢰도: AI 평가(70%) + 규칙 기반(30%) 가중 평균
-            double finalConfidence = (Objects.requireNonNull(aiEvaluation).confidenceScore() * 0.7) + (ruleBasedConfidence * 0.3);
-
-            log.info("Confidence for {}: AI={}, Rule={}, Final={}",
+            double finalConfidence = (aiEvaluation.confidenceScore() * 0.7) + (ruleBasedConfidence * 0.3);
+            log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Final confidence calculated - ncsCode: {}, AI: {}, Rule: {}, Final: {}",
                     ncsCode, aiEvaluation.confidenceScore(), ruleBasedConfidence, finalConfidence);
 
             // AI 평가 결과를 활용한 추천 근거 생성
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Generating evidence and reason");
             List<Evidence> evidenceList = generateEvidenceFromAiEvaluation(profile, aiEvaluation);
             String reason = generateReasonFromAiEvaluation(ncsName, aiEvaluation);
+            log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Evidence count: {}", evidenceList.size());
 
-            return Optional.of(NcsRecommendationCandidate.builder()
+            NcsRecommendationCandidate candidate = NcsRecommendationCandidate.builder()
                     .ncsCode(ncsCode)
                     .ncsName(ncsName)
                     .confidenceScore(finalConfidence)
                     .reason(reason)
                     .evidenceList(evidenceList)
-                    .build());
+                    .build();
+
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] EXIT (SUCCESS) - ncsCode: {}, duration: {}ms, finalConfidence: {}",
+                ncsCode, duration, finalConfidence);
+            return Optional.of(candidate);
 
         } catch (Exception e) {
-            log.error("Failed to build candidate for NCS code {}: {}", ncsCode, e.getMessage());
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] EXCEPTION - ncsCode: {}, duration: {}ms, error: {}",
+                ncsCode, duration, e.getMessage(), e);
             return Optional.empty();
         }
     }
@@ -392,17 +484,28 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
      * 진행 상황을 SSE로 전송하는 헬퍼 메서드
      */
     private void reportProgress(DiagnosisContext context, int progressPercentage, String message) {
-        if (context.getProgressCallback() != null) {
-            DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
-                    .diagnosisId(context.getDiagnosisId())
-                    .currentStep(DiagnosisStep.NCS_CODE_SUGGESTION)
-                    .progressPercentage(progressPercentage)
-                    .status(DiagnosisStatus.IN_PROGRESS)
-                    .currentMessage(message)
-                    .build();
+        log.debug("[NcsRecommendationProcessor.reportProgress] ENTER - diagnosisId: {}, percentage: {}%, message: {}",
+            context.getDiagnosisId(), progressPercentage, message);
 
-            context.getProgressCallback().accept(progressResponse);
-            log.debug("Progress reported: {}% - {}", progressPercentage, message);
+        if (context.getProgressCallback() != null) {
+            try {
+                DiagnosisProgressResponse progressResponse = DiagnosisProgressResponse.builder()
+                        .diagnosisId(context.getDiagnosisId())
+                        .currentStep(DiagnosisStep.NCS_CODE_SUGGESTION)
+                        .progressPercentage(progressPercentage)
+                        .status(DiagnosisStatus.IN_PROGRESS)
+                        .currentMessage(message)
+                        .build();
+
+                context.getProgressCallback().accept(progressResponse);
+                log.debug("[NcsRecommendationProcessor.reportProgress] EXIT - progress sent successfully");
+            } catch (Exception e) {
+                log.error("[NcsRecommendationProcessor.reportProgress] EXCEPTION - diagnosisId: {}, error: {}",
+                    context.getDiagnosisId(), e.getMessage(), e);
+            }
+        } else {
+            log.warn("[NcsRecommendationProcessor.reportProgress] No progress callback available - diagnosisId: {}",
+                context.getDiagnosisId());
         }
     }
 
