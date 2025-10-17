@@ -137,12 +137,13 @@ public class NcsApiService {
                           .orElseThrow(() -> new IllegalStateException("중복 저장 후 재조회 실패"));
                 }
               });
-      // 5. 중복 연결 방지 및 양방향 관계 설정
+      // 5. 중복 연결 방지 및 단방향 관계 설정
       if (ncsOccupation.hasTrainingStandard(standard)) continue;
 
       NcsOccupationStandardLink link = new NcsOccupationStandardLink(ncsOccupation, standard);
       ncsOccupation.getTrainingLinks().add(link);
-      standard.getOccupations().add(link);
+      // Note: 양방향 설정 제거 - 별도 스레드에서 Lazy 컬렉션 초기화 시 LazyInitializationException 방지
+      // standard.getOccupations().add(link);
     }
 
     // 6. 직무 정보 저장
