@@ -231,7 +231,8 @@ public class CareerNetIntegrationService {
                 직업 정보 코드 목록:
                 %s
 
-                응답 형식 (JSON):
+                **중요: 반드시 아래 JSON 형식으로만 응답하세요. 추가 설명이나 텍스트 없이 JSON만 반환하세요.**
+
                 {
                   "encyclopediaThemeCode": "선택한 테마 코드 (themes의 code 값)",
                   "encyclopediaAptitudeCode": "선택한 적성 유형 코드 (aptitudeTypes의 code 값)",
@@ -243,6 +244,7 @@ public class CareerNetIntegrationService {
                 - 반드시 제공된 코드 목록에서만 선택할 것
                 - NCS 직무와 가장 관련성 높은 코드를 선택할 것
                 - counselingGubunCode는 항상 null로 설정 (전체 조회)
+                - 응답은 순수한 JSON 객체만 포함할 것 (설명 텍스트 제외)
                 """,
                 ncsOccupation.getDutyCd(),
                 ncsOccupation.getDutyNm(),
@@ -259,8 +261,13 @@ public class CareerNetIntegrationService {
                 .timeout(API_TIMEOUT)
                 .map(response -> {
                     try {
-                        String cleanedResponse = response.replaceAll("```json\\s*", "").replaceAll("```\\s*$", "").trim();
-                        Map<String, String> codeMap = objectMapper.readValue(cleanedResponse, new TypeReference<>() {});
+                        String jsonResponse = extractJsonFromResponse(response);
+                        Map<String, String> codeMap = objectMapper.readValue(jsonResponse, new TypeReference<>() {});
+
+                        log.info("AI selected codes - encyclopedia: {}, aptitude: {}, jobInfo: {}",
+                                codeMap.get("encyclopediaThemeCode"),
+                                codeMap.get("encyclopediaAptitudeCode"),
+                                codeMap.get("jobInfoCategoryCode"));
 
                         return CareerNetIntegratedResponse.SearchCodes.builder()
                                 .encyclopediaThemeCode(codeMap.get("encyclopediaThemeCode"))
@@ -269,7 +276,7 @@ public class CareerNetIntegrationService {
                                 .counselingGubunCode(codeMap.get("counselingGubunCode"))
                                 .build();
                     } catch (Exception e) {
-                        log.error("Failed to parse AI code selection response", e);
+                        log.error("Failed to parse AI code selection response. Raw response: {}", response, e);
                         throw new RuntimeException("AI 코드 선택 실패", e);
                     }
                 })
@@ -353,7 +360,8 @@ public class CareerNetIntegrationService {
                 직업 백과 목록:
                 %s
 
-                응답 형식 (JSON):
+                **중요: 반드시 아래 JSON 형식으로만 응답하세요. 추가 설명이나 텍스트 없이 JSON만 반환하세요.**
+
                 {
                   "selectedJobCd": "선택한 직업의 jobCd 값",
                   "reason": "선택 이유 (1-2문장)"
@@ -363,6 +371,7 @@ public class CareerNetIntegrationService {
                 - NCS 직무와 가장 관련성 높은 직업을 선택할 것
                 - 반드시 위 목록에서만 선택할 것
                 - jobCd 값을 정확히 응답할 것
+                - 응답은 순수한 JSON 객체만 포함할 것 (설명 텍스트 제외)
                 """,
                 ncsOccupation.getDutyCd(),
                 ncsOccupation.getDutyNm(),
@@ -378,12 +387,12 @@ public class CareerNetIntegrationService {
                 .timeout(API_TIMEOUT)
                 .map(response -> {
                     try {
-                        String cleanedResponse = response.replaceAll("```json\\s*", "").replaceAll("```\\s*$", "").trim();
-                        Map<String, String> selectionMap = objectMapper.readValue(cleanedResponse, new TypeReference<>() {});
+                        String jsonResponse = extractJsonFromResponse(response);
+                        Map<String, String> selectionMap = objectMapper.readValue(jsonResponse, new TypeReference<>() {});
                         String selectedJobCd = selectionMap.get("selectedJobCd");
                         String reason = selectionMap.get("reason");
 
-                        log.info("AI selection reason: {}", reason);
+                        log.info("AI job selection - jobCd: {}, reason: {}", selectedJobCd, reason);
 
                         // jobCd로 직업 찾기
                         return jobs.stream()
@@ -391,7 +400,7 @@ public class CareerNetIntegrationService {
                                 .findFirst()
                                 .orElseThrow(() -> new RuntimeException("AI가 선택한 jobCd를 찾을 수 없습니다: " + selectedJobCd));
                     } catch (Exception e) {
-                        log.error("Failed to parse AI job selection response", e);
+                        log.error("Failed to parse AI job selection response. Raw response: {}", response, e);
                         throw new RuntimeException("AI 직업 선택 실패", e);
                     }
                 })
@@ -534,5 +543,37 @@ public class CareerNetIntegrationService {
                             summary.code(), e.getMessage());
                     return Mono.just(EnrichedCounselingCase.fromSummary(summary));
                 });
+    }
+
+    /**
+     * AI 응답에서 JSON 추출
+     * 다양한 형식의 응답을 처리하여 JSON 객체만 추출
+     */
+    private String extractJsonFromResponse(String response) {
+        if (response == null || response.isBlank()) {
+            throw new IllegalArgumentException("AI response is empty");
+        }
+
+        // 1. 원본 로그 (디버깅용)
+        log.debug("Raw AI response: {}", response);
+
+        // 2. Markdown 코드 블록 제거
+        String cleaned = response.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+
+        // 3. JSON 객체 찾기 (중괄호 쌍 찾기)
+        int firstBrace = cleaned.indexOf('{');
+        int lastBrace = cleaned.lastIndexOf('}');
+
+        if (firstBrace == -1 || lastBrace == -1 || firstBrace >= lastBrace) {
+            // JSON 객체가 없으면 원본 반환 (Jackson이 에러 발생시킴)
+            log.warn("No valid JSON object found in response, returning cleaned text");
+            return cleaned;
+        }
+
+        // 4. 중괄호 사이의 텍스트 추출
+        String extracted = cleaned.substring(firstBrace, lastBrace + 1);
+        log.debug("Extracted JSON: {}", extracted);
+
+        return extracted;
     }
 }
