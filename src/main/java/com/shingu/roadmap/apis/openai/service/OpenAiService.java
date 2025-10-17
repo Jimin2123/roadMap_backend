@@ -37,6 +37,9 @@ public class OpenAiService {
   private final CareerNetCodeProvider careerNetCodeProvider;
   private final SecureLogger secureLogger;
   private final JsonResponseParser jsonResponseParser;
+  private final com.shingu.roadmap.apis.careernet.service.CareerNetService careerNetService;
+  private final com.shingu.roadmap.apis.careernet.config.CareerNetProperties careerNetProperties;
+  private final com.shingu.roadmap.apis.ncs.service.NcsApiService ncsApiService;
 
   /**
    * 사용자 정보를 바탕으로 부족한 역량을 보완할 훈련과정을 추천합니다.
@@ -187,6 +190,11 @@ public class OpenAiService {
   /**
    * Profile 객체를 받아 사용자의 실제 역량에 기반한 NCS 코드를 추천합니다.
    * AI가 잘못된 추론을 하지 못하도록 프롬프트를 대폭 강화했습니다.
+   *
+   * 3단계 프로세스:
+   * 1. AI가 사용자 프로필 기반으로 NCS 코드 추천
+   * 2. NCS API를 통해 추천된 코드 검증 및 상세 정보 조회
+   * 3. AI가 상세 정보(직무명, 설명)를 참고하여 최종 검증
    */
   @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> recommendNcsCodeUsingAssistant(Profile profile) {
@@ -227,18 +235,54 @@ public class OpenAiService {
             resumeToText(profile.getResume())
     );
 
-    // 1단계: NCS 코드 추천
+    // 1단계: AI가 NCS 코드 추천
     return getNcsCodesFromAssistant(initialPrompt)
             .flatMap(recommendedCodes -> {
               if (recommendedCodes.isEmpty()) {
+                log.info("No NCS codes recommended by AI");
                 return Mono.just(Collections.emptySet());
               }
-              // 2단계: 추천된 NCS 코드 검증
-              return validateNcsCodesWithAssistant(profile, recommendedCodes)
-                      .map(validatedCodes -> {
-                        log.info("Original recommendations: {}, Validated recommendations: {}",
-                                recommendedCodes, validatedCodes);
-                        return validatedCodes;
+
+              log.info("AI recommended {} NCS codes: {}", recommendedCodes.size(), recommendedCodes);
+
+              // 2단계: NCS API를 통한 코드 검증 및 상세 정보 조회
+              return Mono.fromCallable(() -> ncsApiService.filterValidNcsCodes(recommendedCodes))
+                      .flatMap(validOccupations -> {
+                        if (validOccupations.isEmpty()) {
+                          log.warn("No valid NCS occupations found for recommended codes: {}", recommendedCodes);
+                          return Mono.just(Collections.emptySet());
+                        }
+
+                        int validCount = validOccupations.size();
+                        int totalCount = recommendedCodes.size();
+                        log.info("Found {} valid NCS occupations out of {} ({}%)",
+                                validCount, totalCount, (validCount * 100 / totalCount));
+
+                        // 부분 성공 처리: 일부만 검증된 경우
+                        if (validCount < totalCount) {
+                          log.warn("Partial validation detected: {}/{} codes successfully validated", validCount, totalCount);
+                          log.warn("Missing codes may cause false negatives in AI validation");
+
+                          // 최소 2개 이상 성공하면 검증 생략하고 사용
+                          if (validCount >= 2) {
+                            log.info("Skipping AI validation due to partial results. Using {} validated codes directly.", validCount);
+                            Set<String> validCodes = validOccupations.stream()
+                                    .map(NcsOccupation::getDutyCd)
+                                    .collect(Collectors.toSet());
+                            return Mono.just(validCodes);
+                          }
+                        }
+
+                        // 전부 성공한 경우에만 AI 검증 진행
+                        log.info("All codes validated successfully, proceeding with AI validation");
+
+                        // 3단계: AI가 상세 정보를 참고하여 최종 검증
+                        return validateNcsCodesWithAssistant(profile, validOccupations)
+                                .map(validatedCodes -> {
+                                  log.info("Original recommendations: {}, Validated recommendations: {}",
+                                          recommendedCodes, validatedCodes);
+                                  return validatedCodes;
+                                });
                       });
             });
   }
@@ -288,8 +332,12 @@ public class OpenAiService {
   /**
    * AI가 추천한 NCS 코드들이 사용자의 프로필에 적합한지 검증합니다.
    * (검증 기준을 명확히 하여 AI의 오판을 줄이도록 프롬프트를 수정했습니다.)
+   *
+   * @param profile 사용자 프로필
+   * @param validOccupations filterValidNcsCodes를 통해 검증된 NCS 직무 정보
+   * @return 검증된 NCS 코드 Set
    */
-  private Mono<Set<String>> validateNcsCodesWithAssistant(Profile profile, Set<String> recommendedCodes) {
+  private Mono<Set<String>> validateNcsCodesWithAssistant(Profile profile, Set<NcsOccupation> validOccupations) {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
@@ -297,26 +345,36 @@ public class OpenAiService {
             .map(rc -> rc.getCertificate().getJmfldnm())
             .collect(Collectors.joining(", ")) : "";
 
+    // NCS 직무 정보를 구조화된 텍스트로 포맷팅
+    String ncsOccupationsInfo = validOccupations.stream()
+            .map(occ -> String.format("- %s: %s\n  설명: %s",
+                    occ.getDutyCd(),
+                    occ.getDutyNm(),
+                    occ.getDutyDef() != null ? occ.getDutyDef() : "설명 없음"))
+            .collect(Collectors.joining("\n\n"));
+
     String validationPrompt = String.format("""
         당신은 NCS 코드 추천의 정확성을 검증하는 선임 커리어 컨설턴트입니다.
-        후배가 추천한 아래 코드 목록을 사용자 정보와 **매우 엄격하게** 비교하여 검증하는 것이 당신의 임무입니다.
+        후배가 추천한 아래 NCS 직무 목록을 사용자 정보와 **매우 엄격하게** 비교하여 검증하는 것이 당신의 임무입니다.
 
         [검증 기준]
-        1.  **핵심 증거:** 이력서의 프로젝트 경험(예: '쇼핑몰 개발')과 역할(예: '백엔드 개발')이 검증 대상 코드와 직접적으로 일치하는가?
-        2.  **기술 증거:** 사용자의 핵심 기술 스택(예: 'Java (ADVANCED)')이 검증 대상 코드의 요구 역량과 부합하는가?
-        3.  **부합하지 않는 경우:** 위 기준에 하나라도 명확하게 부합하지 않으면, 그 코드는 부적합한 것으로 간주해야 합니다.
+        1.  **핵심 증거:** 이력서의 프로젝트 경험(예: '쇼핑몰 개발')과 역할(예: '백엔드 개발')이 검증 대상 NCS 직무와 직접적으로 일치하는가?
+        2.  **기술 증거:** 사용자의 핵심 기술 스택(예: 'Java (ADVANCED)')이 검증 대상 NCS 직무의 요구 역량과 부합하는가?
+        3.  **직무 적합성:** NCS 직무 설명이 사용자의 실제 경험 및 역량과 명확하게 연관되는가?
+        4.  **부합하지 않는 경우:** 위 기준에 하나라도 명확하게 부합하지 않으면, 그 코드는 부적합한 것으로 간주해야 합니다.
 
         [사용자 정보]
         - 기술스택: %s
         - 자격증: %s
         - 이력서: %s
 
-        [검증 대상 NCS 코드 목록]
+        [검증 대상 NCS 직무 목록]
         %s
 
         [과업]
-        - 위 [검증 대상 NCS 코드 목록] 중에서 [검증 기준]에 **완벽하게 부합하는 코드만** 골라주세요.
-        - 만약 목록에 있는 코드가 모두 부적합하다면, 결과에 "REGENERATE"만 포함시켜 주세요.
+        - 위 [검증 대상 NCS 직무 목록] 중에서 [검증 기준]에 **완벽하게 부합하는 코드만** 골라주세요.
+        - 각 직무의 이름과 설명을 참고하여 사용자 프로필과의 적합성을 정확히 판단하세요.
+        - 만약 목록에 있는 직무가 모두 부적합하다면, 결과에 "REGENERATE"만 포함시켜 주세요.
 
         [출력 형식]
         - 반드시 아래 JSON 배열 형식 중 하나로만 응답해주세요.
@@ -327,8 +385,13 @@ public class OpenAiService {
             skillsWithProficiency,
             certificates,
             resumeToText(profile.getResume()),
-            recommendedCodes
+            ncsOccupationsInfo
     );
+
+    // validOccupations에서 코드 Set 추출
+    Set<String> recommendedCodes = validOccupations.stream()
+            .map(NcsOccupation::getDutyCd)
+            .collect(Collectors.toSet());
 
     return openAiClient.generateAssistantResponse(validationPrompt)
             .flatMap(validationResponse -> {
@@ -737,88 +800,6 @@ public class OpenAiService {
           String gapDescription,
           String recommendation
   ) {}
-
-  /**
-   * AI 기반 NCS 코드를 CareerNet 직업 코드로 매핑
-   *
-   * @param ncsCode NCS 직무 코드
-   * @param ncsName NCS 직무명
-   * @param ncsDescription NCS 직무 설명
-   * @return CareerNet 직업 카테고리 코드 (null 가능)
-   */
-  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
-  public Mono<String> mapNcsToCareerNetJobCode(String ncsCode, String ncsName, String ncsDescription) {
-    String jobCategoriesJson = careerNetCodeProvider.getJobInfoCodesJson();
-
-    String systemPrompt = """
-        당신은 NCS(국가직무능력표준) 코드를 CareerNet 직업 분류 코드로 매핑하는 전문가입니다.
-
-        [규칙]
-        1. NCS 직무 정보를 정확히 분석하여 가장 적합한 CareerNet 직업 카테고리를 선택해야 합니다.
-        2. **반드시** [선택 가능한 CareerNet 직업 카테고리 목록]에 있는 코드 중에서만 선택해야 합니다.
-        3. 직무명과 설명의 핵심 키워드를 기반으로 가장 관련성이 높은 카테고리를 선택하세요.
-        4. 매핑이 불가능하거나 적합한 카테고리가 없다면 null을 반환하세요.
-
-        [출력 형식]
-        - 반드시 아래 형식 중 하나로만 응답해주세요:
-        - 매핑 성공 시: {"careerNetCode": "100042"}
-        - 매핑 실패 시: {"careerNetCode": null}
-        - 설명이나 다른 텍스트는 절대 포함하지 마세요.
-        """;
-
-    String userPrompt = String.format("""
-        [NCS 직무 정보]
-        - NCS 코드: %s
-        - 직무명: %s
-        - 직무 설명: %s
-
-        [선택 가능한 CareerNet 직업 카테고리 목록]
-        %s
-
-        위 NCS 직무와 가장 적합한 CareerNet 직업 카테고리 코드를 선택하세요.
-        """,
-            ncsCode,
-            ncsName,
-            ncsDescription != null ? ncsDescription : "설명 없음",
-            jobCategoriesJson
-    );
-
-    List<Map<String, String>> messages = List.of(
-            Map.of("role", "system", "content", systemPrompt),
-            Map.of("role", "user", "content", userPrompt)
-    );
-
-    return openAiClient.generateChatCompletion(messages)
-            .flatMap(response -> {
-              try {
-                String cleanedResponse = response.trim();
-                if (cleanedResponse.startsWith("```")) {
-                  cleanedResponse = cleanedResponse
-                          .replaceAll("```json", "")
-                          .replaceAll("```", "")
-                          .trim();
-                }
-
-                Map<String, String> result = objectMapper.readValue(
-                        cleanedResponse,
-                        new TypeReference<>() {}
-                );
-
-                String careerNetCode = result.get("careerNetCode");
-                if (careerNetCode != null && !careerNetCode.equalsIgnoreCase("null")) {
-                  log.debug("Successfully mapped NCS code {} to CareerNet code {}", ncsCode, careerNetCode);
-                  return Mono.just(careerNetCode);
-                } else {
-                  log.debug("No suitable CareerNet mapping found for NCS code {}", ncsCode);
-                  return Mono.just((String) null);
-                }
-
-              } catch (Exception e) {
-                log.error("Failed to parse NCS-CareerNet mapping response: {}", response, e);
-                return Mono.just((String) null);
-              }
-            });
-  }
 
   // --- Helper Methods ---
 
