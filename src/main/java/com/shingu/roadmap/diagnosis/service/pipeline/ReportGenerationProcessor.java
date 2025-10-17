@@ -153,18 +153,84 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
 
                 CareerNetJobInfo careerNetJobInfo = null;
 
-                // 3. Job Info 추출
+                // 3. Job Info 추출 및 매핑
                 if (integratedResponse != null && integratedResponse.jobInfoDetail() != null
-                        && integratedResponse.jobInfoDetail().content() != null) {
-                    var jobInfo = integratedResponse.jobInfoDetail().content();
+                        && integratedResponse.jobInfoDetail().dataSearch() != null
+                        && integratedResponse.jobInfoDetail().dataSearch().content() != null
+                        && !integratedResponse.jobInfoDetail().dataSearch().content().isEmpty()) {
+                    var jobInfo = integratedResponse.jobInfoDetail().dataSearch().content().getFirst();
+
+                    // 직업 전망
+                    String prospect = (jobInfo.jobPossibility() != null && !jobInfo.jobPossibility().isEmpty()) ?
+                            jobInfo.jobPossibility().getFirst().possibility() : null;
+
+                    // 취업 현황 정보 추출
+                    String employmentMethod = null;
+                    String employmentStatus = null;
+                    String salaryLevel = null;
+                    if (jobInfo.stateOfEmployment() != null) {
+                        for (var emp : jobInfo.stateOfEmployment()) {
+                            if (emp.empWay() != null && !emp.empWay().isEmpty()) {
+                                employmentMethod = emp.empWay();
+                            }
+                            if (emp.employment() != null && !emp.employment().isEmpty()) {
+                                employmentStatus = emp.employment();
+                            }
+                            if (emp.salary() != null && !emp.salary().isEmpty()) {
+                                salaryLevel = emp.salary();
+                            }
+                        }
+                    }
+
+                    // 준비 방법 정보 추출
+                    String educationPath = null;
+                    String trainingInfo = null;
+                    String relatedCertifications = null;
+                    if (jobInfo.preparationWay() != null) {
+                        for (var prep : jobInfo.preparationWay()) {
+                            if (prep.preparation() != null && !prep.preparation().isEmpty()) {
+                                educationPath = prep.preparation();
+                            }
+                            if (prep.training() != null && !prep.training().isEmpty()) {
+                                trainingInfo = prep.training();
+                            }
+                            if (prep.certification() != null && !prep.certification().isEmpty()) {
+                                relatedCertifications = prep.certification();
+                            }
+                        }
+                    }
+
+                    // 관련 학과 추출
+                    List<String> relatedMajors = null;
+                    if (jobInfo.capacityMajor() != null && !jobInfo.capacityMajor().isEmpty()) {
+                        var capacityMajor = jobInfo.capacityMajor().getFirst();
+                        if (capacityMajor.majors() != null) {
+                            relatedMajors = capacityMajor.majors().stream()
+                                    .map(major -> major.majorName())
+                                    .filter(name -> name != null && !name.isEmpty())
+                                    .toList();
+                        }
+                    }
 
                     careerNetJobInfo = CareerNetJobInfo.builder()
                             .jobName(jobInfo.job())
-                            .prospect(jobInfo.jobPossibility() != null ? jobInfo.jobPossibility().possibility() : null)
-                            .salaryLevel(jobInfo.stateOfEmployment() != null ? jobInfo.stateOfEmployment().salary() : null)
+                            .summary(jobInfo.summary())
+                            .coreAbilities(jobInfo.ability())
+                            .aptitudeAndInterest(jobInfo.aptitude())
+                            .similarJobs(jobInfo.similarJob())
+                            .relatedCertifications(relatedCertifications)
+                            .relatedMajors(relatedMajors != null && !relatedMajors.isEmpty() ? relatedMajors : null)
+                            .employmentMethod(employmentMethod)
+                            .employmentStatus(employmentStatus)
+                            .salaryLevel(salaryLevel)
+                            .prospect(prospect)
+                            .educationPath(educationPath)
+                            .trainingInfo(trainingInfo)
                             .build();
 
-                    log.debug("CareerNet info fetched successfully for NCS code {}", candidate.ncsCode());
+                    log.debug("CareerNet info fetched successfully for NCS code {} with {} fields populated",
+                            candidate.ncsCode(),
+                            countNonNullFields(careerNetJobInfo));
                 }
 
                 // 4. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
@@ -422,6 +488,30 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                 .forEach(item -> improvements.add(item.itemName() + " (태도 개선 필요)"));
 
         return improvements;
+    }
+
+    /**
+     * CareerNetJobInfo의 non-null 필드 개수 카운트
+     */
+    private int countNonNullFields(CareerNetJobInfo jobInfo) {
+        if (jobInfo == null) return 0;
+
+        int count = 0;
+        if (jobInfo.jobName() != null) count++;
+        if (jobInfo.summary() != null) count++;
+        if (jobInfo.coreAbilities() != null) count++;
+        if (jobInfo.aptitudeAndInterest() != null) count++;
+        if (jobInfo.similarJobs() != null) count++;
+        if (jobInfo.relatedCertifications() != null) count++;
+        if (jobInfo.relatedMajors() != null) count++;
+        if (jobInfo.employmentMethod() != null) count++;
+        if (jobInfo.employmentStatus() != null) count++;
+        if (jobInfo.salaryLevel() != null) count++;
+        if (jobInfo.prospect() != null) count++;
+        if (jobInfo.educationPath() != null) count++;
+        if (jobInfo.trainingInfo() != null) count++;
+
+        return count;
     }
 
     /**

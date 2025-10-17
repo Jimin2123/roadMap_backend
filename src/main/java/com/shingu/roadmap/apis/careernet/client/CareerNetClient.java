@@ -1,5 +1,6 @@
 package com.shingu.roadmap.apis.careernet.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shingu.roadmap.apis.careernet.config.CareerNetProperties;
 import com.shingu.roadmap.apis.careernet.dto.request.CounselingCaseRequest;
 import com.shingu.roadmap.apis.careernet.dto.request.JobEncyclopediaDetailRequest;
@@ -24,26 +25,20 @@ import java.net.URI;
 public class CareerNetClient {
     private final RestClient restClient;
     private final CareerNetProperties careerNetProperties;
+    private final ObjectMapper objectMapper;
 
     public CareerNetClient(@Qualifier("careerNetRestClient") RestClient restClient,
-                           CareerNetProperties careerNetProperties) {
+                           CareerNetProperties careerNetProperties,
+                           ObjectMapper objectMapper) {
         this.restClient = restClient;
         this.careerNetProperties = careerNetProperties;
+        this.objectMapper = objectMapper;
     }
 
-    /**
-     * API 키를 가져오는 헬퍼 메서드
-     * request의 apiKey가 null이면 properties의 apiKey를 사용
-     */
     private String getApiKey(String requestApiKey) {
         return requestApiKey != null ? requestApiKey : careerNetProperties.getApiKey();
     }
 
-    /**
-     * 직업백과 목록 조회
-     * @param request 직업백과 목록 조회 요청 DTO
-     * @return 직업백과 목록 응답 DTO
-     */
     public JobEncyclopediaListResponse getJobEncyclopediaList(JobEncyclopediaListRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/front/openapi/jobs.json")
@@ -63,11 +58,6 @@ public class CareerNetClient {
                 .body(JobEncyclopediaListResponse.class);
     }
 
-    /**
-     * 직업백과 상세 조회
-     * @param request 직업백과 상세 조회 요청 DTO
-     * @return 직업백과 상세 응답 DTO
-     */
     public JobEncyclopediaDetailResponse getJobEncyclopediaDetail(JobEncyclopediaDetailRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/front/openapi/job.json")
@@ -83,11 +73,6 @@ public class CareerNetClient {
                 .body(JobEncyclopediaDetailResponse.class);
     }
 
-    /**
-     * 직업 정보 목록 조회
-     * @param request 직업 정보 조회 요청 DTO
-     * @return 직업 정보 목록 응답 DTO
-     */
     public JobInfoListResponse getJobInfoList(JobInformationRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/openapi/getOpenApi.json")
@@ -111,11 +96,6 @@ public class CareerNetClient {
                 .body(JobInfoListResponse.class);
     }
 
-    /**
-     * 직업 정보 상세 조회
-     * @param request 직업 정보 조회 요청 DTO (jobdicSeq 포함)
-     * @return 직업 정보 상세 응답 DTO
-     */
     public JobInfoDetailResponse getJobInfoDetail(JobInformationRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/openapi/getOpenApi.json")
@@ -133,17 +113,21 @@ public class CareerNetClient {
         URI uri = builder.build().toUri();
         log.debug("CareerNet API Request [JobInfoDetail]: {}", uri);
 
-        return restClient.get()
+        String responseBody = restClient.get()
                 .uri(uri)
                 .retrieve()
-                .body(JobInfoDetailResponse.class);
+                .body(String.class);
+
+        log.info("Raw CareerNet JobInfoDetail Response: {}", responseBody);
+
+        try {
+            return objectMapper.readValue(responseBody, JobInfoDetailResponse.class);
+        } catch (Exception e) {
+            log.error("Failed to parse JobInfoDetailResponse: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to parse JobInfoDetailResponse", e);
+        }
     }
 
-    /**
-     * 진로 상담 사례 목록 조회
-     * @param request 진로 상담 사례 조회 요청 DTO
-     * @return 진로 상담 사례 목록 응답 DTO
-     */
     public CounselingCaseListResponse getCounselingCaseList(CounselingCaseRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/openapi/getOpenApi")
@@ -162,11 +146,6 @@ public class CareerNetClient {
                 .body(CounselingCaseListResponse.class);
     }
 
-    /**
-     * 진로 상담 사례 상세 조회
-     * @param request 진로 상담 사례 조회 요청 DTO (con_cd 포함)
-     * @return 진로 상담 사례 상세 응답 DTO
-     */
     public CounselingCaseDetailResponse getCounselingCaseDetail(CounselingCaseRequest request) {
         UriComponentsBuilder builder = UriComponentsBuilder
                 .fromUriString(careerNetProperties.getBaseUrl() + "/openapi/getOpenApi")
