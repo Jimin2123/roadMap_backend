@@ -233,12 +233,30 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                             countNonNullFields(careerNetJobInfo));
                 }
 
-                // 4. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
+                // 4. Counseling Cases 추출 및 변환
+                List<CounselingCaseInfo> counselingCases = null;
+                if (integratedResponse != null && integratedResponse.counselingCases() != null
+                        && !integratedResponse.counselingCases().isEmpty()) {
+                    counselingCases = integratedResponse.counselingCases().stream()
+                            .map(enrichedCase -> CounselingCaseInfo.builder()
+                                    .title(enrichedCase.memo() != null ? enrichedCase.memo() : "상담 사례")
+                                    .question(enrichedCase.question())
+                                    .answer(enrichedCase.answer())
+                                    .category(enrichedCase.gubun())
+                                    .build())
+                            .toList();
+
+                    log.debug("Counseling cases fetched successfully for NCS code {}: {} cases",
+                            candidate.ncsCode(), counselingCases.size());
+                }
+
+                // 5. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
                 KsaAnalysisResponse ksaAnalysis = ksaByNcsCode.get(candidate.ncsCode());
 
-                // 5. 후보 정보에 커리어넷 정보 및 KSA 분석 결과 추가
+                // 6. 후보 정보에 커리어넷 정보, 상담 사례 및 KSA 분석 결과 추가
                 enrichedCandidates.add(candidate.toBuilder()
                         .careerNetJobInfo(careerNetJobInfo)
+                        .counselingCases(counselingCases)
                         .ksaAnalysis(ksaAnalysis)
                         .build());
 
