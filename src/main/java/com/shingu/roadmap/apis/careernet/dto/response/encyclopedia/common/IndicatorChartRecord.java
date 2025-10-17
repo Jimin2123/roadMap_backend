@@ -7,6 +7,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "직업 지표 차트")
 public record IndicatorChartRecord(
         @JsonProperty("indicator") @Schema(description = "직업지표명") String indicator,
-        @JsonProperty("indicator_data") @Schema(description = "직업지표 데이터") Integer indicatorData,
+        @JsonProperty("indicator_data") @Schema(description = "직업지표 데이터") String indicatorData, // Integer -> String
         @JsonProperty("source") @Schema(description = "직업지표 출처") String source
 ) {}

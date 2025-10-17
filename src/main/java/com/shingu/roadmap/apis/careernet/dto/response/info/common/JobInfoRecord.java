@@ -52,5 +52,9 @@ public record JobInfoRecord(
 
         @JsonProperty("aptd_type_code")
         @Schema(description = "적성유형코드")
-        String aptdTypeCode
+        String aptdTypeCode,
+
+        @JsonProperty("totalCount")
+        @Schema(description = "전체 검색 결과 수")
+        String totalCount
 ) {}

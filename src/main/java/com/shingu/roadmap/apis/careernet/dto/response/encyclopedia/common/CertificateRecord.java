@@ -7,5 +7,5 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "관련 자격증")
 public record CertificateRecord(
         @JsonProperty("certi") @Schema(description = "관련 자격증명") String certi,
-        @JsonProperty("LINK") @Schema(description = "관련 자격증 링크") String link
+        @JsonProperty("link") @Schema(description = "관련 자격증 링크") String link
 ) {}

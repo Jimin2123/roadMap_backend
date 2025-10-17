@@ -37,7 +37,7 @@ public record JobEncyclopediaDetailResponse(
 
         @JsonProperty("tagList")
         @Schema(description = "관련 태그 목록")
-        List<TagRecord> tagList,
+        List<String> tagList,
 
         @JsonProperty("researchList")
         @Schema(description = "진로 탐색 활동 목록")
@@ -53,7 +53,7 @@ public record JobEncyclopediaDetailResponse(
 
         @JsonProperty("jobReadyList")
         @Schema(description = "준비 방법 목록")
-        List<JobReadyRecord> jobReadyList,
+        JobReadyRecord jobReadyList,
 
         @JsonProperty("jobRelOrgList")
         @Schema(description = "관련 기관 목록")
@@ -77,5 +77,9 @@ public record JobEncyclopediaDetailResponse(
 
         @JsonProperty("performList")
         @Schema(description = "업무 수행능력, 지식, 환경 목록")
-        List<PerformanceItemRecord> performList
+        PerformanceRecord performList,
+
+        @JsonProperty("relJinsolList")
+        @Schema(description = "관련 진솔리스트")
+        List<RelJinsolRecord> relJinsolList
 ) {}

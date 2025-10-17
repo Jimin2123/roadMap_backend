@@ -6,6 +6,10 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "직업 요약 정보")
 public record JobSummaryRecord(
 
+        @JsonProperty("seq")
+        @Schema(description = "직업 일련번호 (상세 조회용)")
+        Integer seq,
+
         @JsonProperty("aptit_name")
         @Schema(description = "직업군")
         String aptitName,

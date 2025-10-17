@@ -7,6 +7,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 @Schema(description = "전공 분포 차트")
 public record MajorChartRecord(
         @JsonProperty("major") @Schema(description = "전공계열명") String major,
-        @JsonProperty("major_data") @Schema(description = "전공계열 데이터") Integer majorData,
+        @JsonProperty("major_data") @Schema(description = "전공계열 데이터") String majorData, // String으로 수정
         @JsonProperty("source") @Schema(description = "전공계열 데이터 출처") String source
 ) {}
