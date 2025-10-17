@@ -293,18 +293,18 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // 첫 번째 KSA 분석 결과 기준
         KsaAnalysisResponse ksaAnalysis = ksaAnalyses.getFirst();
 
-        // 1. 공통 역량 축 생성 (모든 KSA 항목명)
+        // 1. 공통 역량 축 생성 (itemDescription 사용 - 실제 역량명)
         List<String> competencyAxes = new ArrayList<>();
         competencyAxes.addAll(ksaAnalysis.knowledgeItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(5)
                 .toList());
         competencyAxes.addAll(ksaAnalysis.skillItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(5)
                 .toList());
         competencyAxes.addAll(ksaAnalysis.attitudeItems().stream()
-                .map(KsaAnalysisResponse.KsaItem::itemName)
+                .map(item -> cleanCompetencyName(item.itemDescription()))
                 .limit(3)
                 .toList());
 
@@ -314,17 +314,23 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // Knowledge 점수
         ksaAnalysis.knowledgeItems().stream()
                 .limit(5)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         // Skill 점수
         ksaAnalysis.skillItems().stream()
                 .limit(5)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         // Attitude 점수
         ksaAnalysis.attitudeItems().stream()
                 .limit(3)
-                .forEach(item -> userCompetencyScores.put(item.itemName(), item.userScore()));
+                .forEach(item -> userCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.userScore()));
 
         CompetencyProfile userProfile = CompetencyProfile.builder()
                 .profileName("현재 보유 역량")
@@ -337,17 +343,23 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
         // Knowledge 목표 점수
         ksaAnalysis.knowledgeItems().stream()
                 .limit(5)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // Skill 목표 점수
         ksaAnalysis.skillItems().stream()
                 .limit(5)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // Attitude 목표 점수
         ksaAnalysis.attitudeItems().stream()
                 .limit(3)
-                .forEach(item -> targetCompetencyScores.put(item.itemName(), item.targetScore()));
+                .forEach(item -> targetCompetencyScores.put(
+                        cleanCompetencyName(item.itemDescription()),
+                        item.targetScore()));
 
         // 일치율 계산
         double matchRate = calculateMatchRate(userCompetencyScores, targetCompetencyScores);
@@ -364,6 +376,19 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                 .targetNcsProfiles(List.of(targetProfile))
                 .competencyAxes(competencyAxes)
                 .build();
+    }
+
+    /**
+     * 역량명 정리 (번호 접두사 제거)
+     * 예: "1.유스케이스" → "유스케이스"
+     */
+    private String cleanCompetencyName(String itemDescription) {
+        if (itemDescription == null || itemDescription.isEmpty()) {
+            return itemDescription;
+        }
+
+        // "1.", "2." 같은 번호 접두사 제거
+        return itemDescription.replaceFirst("^\\d+\\.", "").trim();
     }
 
     /**
