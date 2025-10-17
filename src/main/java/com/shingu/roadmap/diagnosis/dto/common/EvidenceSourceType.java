@@ -28,6 +28,9 @@ public enum EvidenceSourceType {
     @Schema(description = "진단 설문")
     DIAGNOSIS_SURVEY,
 
+    @Schema(description = "AI 분석")
+    AI_ANALYSIS,
+
     @Schema(description = "기타")
     OTHER
 }

@@ -37,6 +37,9 @@ public class OpenAiService {
   private final CareerNetCodeProvider careerNetCodeProvider;
   private final SecureLogger secureLogger;
   private final JsonResponseParser jsonResponseParser;
+  private final com.shingu.roadmap.apis.careernet.service.CareerNetService careerNetService;
+  private final com.shingu.roadmap.apis.careernet.config.CareerNetProperties careerNetProperties;
+  private final com.shingu.roadmap.apis.ncs.service.NcsApiService ncsApiService;
 
   /**
    * 사용자 정보를 바탕으로 부족한 역량을 보완할 훈련과정을 추천합니다.
@@ -187,6 +190,11 @@ public class OpenAiService {
   /**
    * Profile 객체를 받아 사용자의 실제 역량에 기반한 NCS 코드를 추천합니다.
    * AI가 잘못된 추론을 하지 못하도록 프롬프트를 대폭 강화했습니다.
+   *
+   * 3단계 프로세스:
+   * 1. AI가 사용자 프로필 기반으로 NCS 코드 추천
+   * 2. NCS API를 통해 추천된 코드 검증 및 상세 정보 조회
+   * 3. AI가 상세 정보(직무명, 설명)를 참고하여 최종 검증
    */
   @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
   public Mono<Set<String>> recommendNcsCodeUsingAssistant(Profile profile) {
@@ -227,18 +235,54 @@ public class OpenAiService {
             resumeToText(profile.getResume())
     );
 
-    // 1단계: NCS 코드 추천
+    // 1단계: AI가 NCS 코드 추천
     return getNcsCodesFromAssistant(initialPrompt)
             .flatMap(recommendedCodes -> {
               if (recommendedCodes.isEmpty()) {
+                log.info("No NCS codes recommended by AI");
                 return Mono.just(Collections.emptySet());
               }
-              // 2단계: 추천된 NCS 코드 검증
-              return validateNcsCodesWithAssistant(profile, recommendedCodes)
-                      .map(validatedCodes -> {
-                        log.info("Original recommendations: {}, Validated recommendations: {}",
-                                recommendedCodes, validatedCodes);
-                        return validatedCodes;
+
+              log.info("AI recommended {} NCS codes: {}", recommendedCodes.size(), recommendedCodes);
+
+              // 2단계: NCS API를 통한 코드 검증 및 상세 정보 조회
+              return Mono.fromCallable(() -> ncsApiService.filterValidNcsCodes(recommendedCodes))
+                      .flatMap(validOccupations -> {
+                        if (validOccupations.isEmpty()) {
+                          log.warn("No valid NCS occupations found for recommended codes: {}", recommendedCodes);
+                          return Mono.just(Collections.emptySet());
+                        }
+
+                        int validCount = validOccupations.size();
+                        int totalCount = recommendedCodes.size();
+                        log.info("Found {} valid NCS occupations out of {} ({}%)",
+                                validCount, totalCount, (validCount * 100 / totalCount));
+
+                        // 부분 성공 처리: 일부만 검증된 경우
+                        if (validCount < totalCount) {
+                          log.warn("Partial validation detected: {}/{} codes successfully validated", validCount, totalCount);
+                          log.warn("Missing codes may cause false negatives in AI validation");
+
+                          // 최소 2개 이상 성공하면 검증 생략하고 사용
+                          if (validCount >= 2) {
+                            log.info("Skipping AI validation due to partial results. Using {} validated codes directly.", validCount);
+                            Set<String> validCodes = validOccupations.stream()
+                                    .map(NcsOccupation::getDutyCd)
+                                    .collect(Collectors.toSet());
+                            return Mono.just(validCodes);
+                          }
+                        }
+
+                        // 전부 성공한 경우에만 AI 검증 진행
+                        log.info("All codes validated successfully, proceeding with AI validation");
+
+                        // 3단계: AI가 상세 정보를 참고하여 최종 검증
+                        return validateNcsCodesWithAssistant(profile, validOccupations)
+                                .map(validatedCodes -> {
+                                  log.info("Original recommendations: {}, Validated recommendations: {}",
+                                          recommendedCodes, validatedCodes);
+                                  return validatedCodes;
+                                });
                       });
             });
   }
@@ -288,8 +332,12 @@ public class OpenAiService {
   /**
    * AI가 추천한 NCS 코드들이 사용자의 프로필에 적합한지 검증합니다.
    * (검증 기준을 명확히 하여 AI의 오판을 줄이도록 프롬프트를 수정했습니다.)
+   *
+   * @param profile 사용자 프로필
+   * @param validOccupations filterValidNcsCodes를 통해 검증된 NCS 직무 정보
+   * @return 검증된 NCS 코드 Set
    */
-  private Mono<Set<String>> validateNcsCodesWithAssistant(Profile profile, Set<String> recommendedCodes) {
+  private Mono<Set<String>> validateNcsCodesWithAssistant(Profile profile, Set<NcsOccupation> validOccupations) {
     String skillsWithProficiency = profile.getProfileSkills().stream()
             .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
             .collect(Collectors.joining(", "));
@@ -297,26 +345,36 @@ public class OpenAiService {
             .map(rc -> rc.getCertificate().getJmfldnm())
             .collect(Collectors.joining(", ")) : "";
 
+    // NCS 직무 정보를 구조화된 텍스트로 포맷팅
+    String ncsOccupationsInfo = validOccupations.stream()
+            .map(occ -> String.format("- %s: %s\n  설명: %s",
+                    occ.getDutyCd(),
+                    occ.getDutyNm(),
+                    occ.getDutyDef() != null ? occ.getDutyDef() : "설명 없음"))
+            .collect(Collectors.joining("\n\n"));
+
     String validationPrompt = String.format("""
         당신은 NCS 코드 추천의 정확성을 검증하는 선임 커리어 컨설턴트입니다.
-        후배가 추천한 아래 코드 목록을 사용자 정보와 **매우 엄격하게** 비교하여 검증하는 것이 당신의 임무입니다.
+        후배가 추천한 아래 NCS 직무 목록을 사용자 정보와 **매우 엄격하게** 비교하여 검증하는 것이 당신의 임무입니다.
 
         [검증 기준]
-        1.  **핵심 증거:** 이력서의 프로젝트 경험(예: '쇼핑몰 개발')과 역할(예: '백엔드 개발')이 검증 대상 코드와 직접적으로 일치하는가?
-        2.  **기술 증거:** 사용자의 핵심 기술 스택(예: 'Java (ADVANCED)')이 검증 대상 코드의 요구 역량과 부합하는가?
-        3.  **부합하지 않는 경우:** 위 기준에 하나라도 명확하게 부합하지 않으면, 그 코드는 부적합한 것으로 간주해야 합니다.
+        1.  **핵심 증거:** 이력서의 프로젝트 경험(예: '쇼핑몰 개발')과 역할(예: '백엔드 개발')이 검증 대상 NCS 직무와 직접적으로 일치하는가?
+        2.  **기술 증거:** 사용자의 핵심 기술 스택(예: 'Java (ADVANCED)')이 검증 대상 NCS 직무의 요구 역량과 부합하는가?
+        3.  **직무 적합성:** NCS 직무 설명이 사용자의 실제 경험 및 역량과 명확하게 연관되는가?
+        4.  **부합하지 않는 경우:** 위 기준에 하나라도 명확하게 부합하지 않으면, 그 코드는 부적합한 것으로 간주해야 합니다.
 
         [사용자 정보]
         - 기술스택: %s
         - 자격증: %s
         - 이력서: %s
 
-        [검증 대상 NCS 코드 목록]
+        [검증 대상 NCS 직무 목록]
         %s
 
         [과업]
-        - 위 [검증 대상 NCS 코드 목록] 중에서 [검증 기준]에 **완벽하게 부합하는 코드만** 골라주세요.
-        - 만약 목록에 있는 코드가 모두 부적합하다면, 결과에 "REGENERATE"만 포함시켜 주세요.
+        - 위 [검증 대상 NCS 직무 목록] 중에서 [검증 기준]에 **완벽하게 부합하는 코드만** 골라주세요.
+        - 각 직무의 이름과 설명을 참고하여 사용자 프로필과의 적합성을 정확히 판단하세요.
+        - 만약 목록에 있는 직무가 모두 부적합하다면, 결과에 "REGENERATE"만 포함시켜 주세요.
 
         [출력 형식]
         - 반드시 아래 JSON 배열 형식 중 하나로만 응답해주세요.
@@ -327,8 +385,13 @@ public class OpenAiService {
             skillsWithProficiency,
             certificates,
             resumeToText(profile.getResume()),
-            recommendedCodes
+            ncsOccupationsInfo
     );
+
+    // validOccupations에서 코드 Set 추출
+    Set<String> recommendedCodes = validOccupations.stream()
+            .map(NcsOccupation::getDutyCd)
+            .collect(Collectors.toSet());
 
     return openAiClient.generateAssistantResponse(validationPrompt)
             .flatMap(validationResponse -> {
@@ -416,6 +479,327 @@ public class OpenAiService {
               return jsonResponseParser.parseStringSet(response);
             });
   }
+
+  /**
+   * AI 기반 KSA 역량 분석
+   * NCS KSA 항목들과 사용자 프로필을 비교하여 각 항목별 보유 수준을 평가합니다.
+   *
+   * @param ncsCode NCS 코드
+   * @param ksaItems NCS KSA 항목 목록
+   * @param profile 사용자 프로필
+   * @return KSA 항목명과 평가 결과 맵
+   */
+  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
+  public Mono<Map<String, KsaEvaluationResult>> analyzeKsaCompetency(
+          String ncsCode,
+          List<String> ksaItems,
+          Profile profile
+  ) {
+    if (ksaItems == null || ksaItems.isEmpty()) {
+      return Mono.just(Collections.emptyMap());
+    }
+
+    String skillsWithProficiency = profile.getProfileSkills().stream()
+            .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
+            .collect(Collectors.joining(", "));
+
+    String certificates = profile.getResume() != null
+            ? profile.getResume().getCertificates().stream()
+            .map(rc -> rc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", "))
+            : "";
+
+    String resumeText = resumeToText(profile.getResume());
+
+    String systemPrompt = """
+            당신은 NCS(국가직무능력표준) 기반 역량 평가 전문가입니다.
+            사용자의 이력서와 프로필을 분석하여, NCS KSA 항목별로 보유 수준을 정확하게 평가해야 합니다.
+
+            [평가 기준]
+            1. **이력서의 프로젝트 경험**이 가장 중요한 평가 근거입니다
+            2. **기술 스택의 숙련도**(BEGINNER, INTERMEDIATE, ADVANCED, EXPERT)를 반영하세요
+            3. **자격증**은 보조 지표로 활용하세요
+            4. 명시되지 않은 내용은 추론하지 말고, 있는 그대로 평가하세요
+
+            [점수 산정 가이드]
+            - 0.9~1.0: 해당 역량에 대한 실무 경험이 풍부하고 전문가 수준
+            - 0.7~0.9: 실무 경험이 있으며 숙련된 수준
+            - 0.5~0.7: 기본적인 이해와 경험이 있는 수준
+            - 0.3~0.5: 이론적 지식은 있으나 실무 경험 부족
+            - 0.0~0.3: 거의 경험이 없거나 관련성이 낮음
+
+            [평가 등급]
+            - EXCELLENT: 목표 수준을 초과 달성 (gap <= 0)
+            - ADEQUATE: 적정 수준 (gap <= 0.1)
+            - NEED_IMPROVEMENT: 개선 필요 (gap <= 0.3)
+            - INSUFFICIENT: 상당한 역량 강화 필요 (gap > 0.3)
+            """;
+
+    String userPrompt = String.format("""
+            [사용자 정보]
+            - NCS 코드: %s
+            - 보유 기술: %s
+            - 보유 자격증: %s
+            - 이력서:
+            %s
+
+            [평가 대상 KSA 항목 목록]
+            %s
+
+            [과업]
+            위 KSA 항목 각각에 대해 사용자의 보유 수준(userScore, 0.0~1.0)을 평가하고,
+            목표 수준(targetScore)은 0.8로 설정한 후,
+            각 항목별로 다음 정보를 제공하세요:
+            1. userScore: 사용자 보유 수준 (0.0~1.0)
+            2. levelAssessment: 평가 등급 (EXCELLENT, ADEQUATE, NEED_IMPROVEMENT, INSUFFICIENT)
+            3. gapDescription: 갭에 대한 간단한 설명 (1문장)
+            4. recommendation: 역량 강화 방안 (1문장)
+
+            [출력 형식]
+            반드시 아래 JSON 형식으로만 응답해주세요. 마크다운 코드 블록이나 설명 없이 순수 JSON만 출력하세요.
+
+            {
+              "ksaScores": {
+                "KSA항목명1": {
+                  "userScore": 0.75,
+                  "levelAssessment": "ADEQUATE",
+                  "gapDescription": "기본적인 역량은 보유하고 있으나 심화 학습이 필요합니다",
+                  "recommendation": "관련 프로젝트 경험을 더 쌓으세요"
+                },
+                "KSA항목명2": { ... }
+              }
+            }
+            """,
+            ncsCode,
+            skillsWithProficiency,
+            certificates,
+            resumeText,
+            String.join("\n", ksaItems)
+    );
+
+    List<Map<String, String>> messages = List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+    );
+
+    return openAiClient.generateChatCompletion(messages)
+            .flatMap(response -> {
+              try {
+                // JSON 파싱
+                String cleanedResponse = response.trim();
+                if (cleanedResponse.startsWith("```")) {
+                  cleanedResponse = cleanedResponse
+                          .replaceAll("```json", "")
+                          .replaceAll("```", "")
+                          .trim();
+                }
+
+                Map<String, Object> parsed = objectMapper.readValue(
+                        cleanedResponse,
+                        new TypeReference<>() {}
+                );
+
+                Map<String, Map<String, Object>> ksaScores =
+                        (Map<String, Map<String, Object>>) parsed.get("ksaScores");
+
+                if (ksaScores == null) {
+                  log.warn("AI response does not contain ksaScores");
+                  return Mono.just(Collections.emptyMap());
+                }
+
+                // Map<String, KsaEvaluationResult>로 변환
+                Map<String, KsaEvaluationResult> results = new HashMap<>();
+                for (Map.Entry<String, Map<String, Object>> entry : ksaScores.entrySet()) {
+                  Map<String, Object> scoreData = entry.getValue();
+                  KsaEvaluationResult result = new KsaEvaluationResult(
+                          ((Number) scoreData.get("userScore")).doubleValue(),
+                          (String) scoreData.get("levelAssessment"),
+                          (String) scoreData.get("gapDescription"),
+                          (String) scoreData.get("recommendation")
+                  );
+                  results.put(entry.getKey(), result);
+                }
+
+                return Mono.just(results);
+
+              } catch (Exception e) {
+                log.error("Failed to parse KSA analysis response: {}", response, e);
+                return Mono.just(Collections.emptyMap());
+              }
+            });
+  }
+
+  /**
+   * AI 기반 NCS 적합도 신뢰도 평가
+   * 사용자 프로필과 NCS 직무/능력단위 간의 매칭 적합도를 AI로 평가합니다.
+   *
+   * @param ncsCode NCS 코드
+   * @param ncsName NCS 직무명
+   * @param compUnitNames 능력단위 목록
+   * @param profile 사용자 프로필
+   * @return 신뢰도 평가 결과 (0.0~1.0)
+   */
+  @Cacheable(value = OpenAiCacheConfig.NCS_CODE_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
+  public Mono<NcsConfidenceEvaluation> evaluateNcsMatchConfidence(
+          String ncsCode,
+          String ncsName,
+          List<String> compUnitNames,
+          Profile profile
+  ) {
+    String skillsWithProficiency = profile.getProfileSkills().stream()
+            .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
+            .collect(Collectors.joining(", "));
+
+    String certificates = profile.getResume() != null
+            ? profile.getResume().getCertificates().stream()
+            .map(rc -> rc.getCertificate().getJmfldnm())
+            .collect(Collectors.joining(", "))
+            : "";
+
+    String resumeText = resumeToText(profile.getResume());
+
+    String systemPrompt = """
+            당신은 NCS(국가직무능력표준) 기반 직무 적합도를 평가하는 전문 커리어 컨설턴트입니다.
+            사용자의 이력서와 프로필을 분석하여, 특정 NCS 직무에 대한 적합도 신뢰도를 정확하게 평가해야 합니다.
+
+            [평가 기준]
+            1. **프로젝트 경험의 직접적 관련성** (가중치 40%)
+               - 이력서의 프로젝트가 NCS 직무와 얼마나 직접적으로 연관되는가?
+               - 프로젝트 역할이 NCS 직무 수행과 유사한가?
+
+            2. **기술 스택의 적합성** (가중치 30%)
+               - 보유 기술이 NCS 능력단위 요구사항과 일치하는가?
+               - 기술 숙련도가 직무 수행에 충분한가?
+
+            3. **경력 수준의 적절성** (가중치 20%)
+               - 프로젝트 경험 기간과 역할이 해당 직무 수준과 맞는가?
+
+            4. **자격증 보유** (가중치 10%)
+               - NCS 직무와 관련된 자격증을 보유하고 있는가?
+
+            [신뢰도 점수 가이드]
+            - 0.9~1.0: 매우 높은 적합도 - 프로젝트 경험과 기술이 직무 요구사항과 거의 완벽하게 일치
+            - 0.8~0.9: 높은 적합도 - 핵심 경험과 기술이 충분하며 직무 수행 가능
+            - 0.7~0.8: 적정 적합도 - 기본 경험과 기술은 있으나 일부 보완 필요
+            - 0.6~0.7: 낮은 적합도 - 관련 경험은 있으나 직무 수행에 추가 학습 필요
+            - 0.0~0.6: 부적합 - 직무와의 연관성이 낮거나 경험 부족
+            """;
+
+    String userPrompt = String.format("""
+            [평가 대상 NCS 직무]
+            - NCS 코드: %s
+            - 직무명: %s
+            - 능력단위 목록:
+            %s
+
+            [사용자 정보]
+            - 보유 기술: %s
+            - 보유 자격증: %s
+            - 이력서:
+            %s
+
+            [과업]
+            위 [평가 기준]을 바탕으로 사용자가 해당 NCS 직무에 얼마나 적합한지 평가하고,
+            다음 정보를 제공하세요:
+
+            1. confidenceScore: 적합도 신뢰도 점수 (0.0~1.0)
+            2. matchLevel: 적합 수준 (EXCELLENT, HIGH, ADEQUATE, LOW, POOR)
+            3. keyStrengths: 주요 강점 (최대 3개, 문장 배열)
+            4. keyWeaknesses: 주요 약점 (최대 3개, 문장 배열)
+            5. reasoning: 평가 근거 (2-3문장)
+
+            [출력 형식]
+            반드시 아래 JSON 형식으로만 응답해주세요. 마크다운 코드 블록이나 설명 없이 순수 JSON만 출력하세요.
+
+            {
+              "confidenceScore": 0.85,
+              "matchLevel": "HIGH",
+              "keyStrengths": [
+                "백엔드 개발 프로젝트 경험이 풍부함",
+                "Spring Boot 기술 스택이 직무 요구사항과 일치",
+                "팀 리더 역할 수행 경험 보유"
+              ],
+              "keyWeaknesses": [
+                "클라우드 인프라 경험 부족",
+                "대규모 시스템 설계 경험 필요"
+              ],
+              "reasoning": "사용자는 해당 NCS 직무에 필요한 핵심 백엔드 개발 경험과 기술 스택을 충분히 보유하고 있습니다. 다만 일부 능력단위에서 요구하는 클라우드 및 대규모 시스템 경험이 다소 부족하여 추가 학습이 권장됩니다."
+            }
+            """,
+            ncsCode,
+            ncsName,
+            String.join("\n", compUnitNames.stream().map(name -> "  - " + name).toList()),
+            skillsWithProficiency,
+            certificates,
+            resumeText
+    );
+
+    List<Map<String, String>> messages = List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", userPrompt)
+    );
+
+    return openAiClient.generateChatCompletion(messages)
+            .flatMap(response -> {
+              try {
+                // JSON 파싱
+                String cleanedResponse = response.trim();
+                if (cleanedResponse.startsWith("```")) {
+                  cleanedResponse = cleanedResponse
+                          .replaceAll("```json", "")
+                          .replaceAll("```", "")
+                          .trim();
+                }
+
+                Map<String, Object> parsed = objectMapper.readValue(
+                        cleanedResponse,
+                        new TypeReference<>() {}
+                );
+
+                NcsConfidenceEvaluation evaluation = new NcsConfidenceEvaluation(
+                        ((Number) parsed.get("confidenceScore")).doubleValue(),
+                        (String) parsed.get("matchLevel"),
+                        (List<String>) parsed.get("keyStrengths"),
+                        (List<String>) parsed.get("keyWeaknesses"),
+                        (String) parsed.get("reasoning")
+                );
+
+                return Mono.just(evaluation);
+
+              } catch (Exception e) {
+                log.error("Failed to parse NCS confidence evaluation response: {}", response, e);
+                // Fallback: 기본 신뢰도 반환
+                return Mono.just(new NcsConfidenceEvaluation(
+                        0.7,
+                        "ADEQUATE",
+                        Collections.emptyList(),
+                        Collections.emptyList(),
+                        "AI 평가 실패로 기본 신뢰도를 반환합니다."
+                ));
+              }
+            });
+  }
+
+  /**
+   * NCS 적합도 신뢰도 평가 결과
+   */
+  public record NcsConfidenceEvaluation(
+          double confidenceScore,
+          String matchLevel,
+          List<String> keyStrengths,
+          List<String> keyWeaknesses,
+          String reasoning
+  ) {}
+
+  /**
+   * KSA 평가 결과
+   */
+  public record KsaEvaluationResult(
+          double userScore,
+          String levelAssessment,
+          String gapDescription,
+          String recommendation
+  ) {}
 
   // --- Helper Methods ---
 

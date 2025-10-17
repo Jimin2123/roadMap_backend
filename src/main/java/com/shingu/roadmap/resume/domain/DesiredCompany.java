@@ -5,9 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "desired_company",
-  indexes = @Index(name = "idx_desired_company_resume", columnList = "resume_id")
-)
+@Table(name = "desired_company")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder(toBuilder = true)
