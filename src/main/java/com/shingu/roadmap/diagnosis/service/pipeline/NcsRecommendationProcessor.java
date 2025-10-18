@@ -49,8 +49,12 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
         try {
             Profile profile = context.getProfile();
             if (profile == null) {
-                log.error("[NcsRecommendationProcessor.process] Profile is null - aborting");
-                throw new IllegalArgumentException("Profile is required for NCS recommendation");
+                long duration = System.currentTimeMillis() - totalStartTime;
+                log.error("[NcsRecommendationProcessor.process] Profile is null - aborting, duration: {}ms", duration);
+                context.setSuccess(false);
+                context.setErrorMessage("Required analysis results missing: Profile is null");
+                log.info("[NcsRecommendationProcessor.process] EXIT (PROFILE MISSING) - duration: {}ms", duration);
+                return context;
             }
             log.debug("[NcsRecommendationProcessor.process] Profile loaded - skillCount: {}, projectCount: {}",
                 profile.getProfileSkills() != null ? profile.getProfileSkills().size() : 0,
