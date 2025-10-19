@@ -47,9 +47,19 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
             List<KsaAnalysisResponse> ksaAnalyses = context.getKsaAnalysisResponses();
             String careerLevel = context.getCareerLevel();
 
-            if (ncsAnalysis == null || ksaAnalyses == null || ksaAnalyses.isEmpty()) {
-                log.error("[ReportGenerationProcessor.process] Required analysis results missing - aborting");
-                throw new IllegalArgumentException("NCS and KSA analysis results are required for report generation");
+            // Validate required inputs
+            if (ncsAnalysis == null) {
+                log.error("[ReportGenerationProcessor.process] NCS analysis result is missing - aborting");
+                context.setSuccess(false);
+                context.setErrorMessage("Required analysis results missing: NCS analysis is null");
+                return context;
+            }
+
+            if (ksaAnalyses == null || ksaAnalyses.isEmpty()) {
+                log.error("[ReportGenerationProcessor.process] KSA analysis results missing or empty - aborting");
+                context.setSuccess(false);
+                context.setErrorMessage("Required analysis results missing: KSA analysis is null or empty");
+                return context;
             }
             log.debug("[ReportGenerationProcessor.process] Input data loaded - ncsCandidates: {}, ksaAnalyses: {}, careerLevel: {}",
                 ncsAnalysis.candidates().size(), ksaAnalyses.size(), careerLevel);

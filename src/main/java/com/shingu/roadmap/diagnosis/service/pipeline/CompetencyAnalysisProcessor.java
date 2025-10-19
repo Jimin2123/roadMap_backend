@@ -48,8 +48,12 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
         try {
             NcsAnalysisResponse ncsAnalysis = context.getNcsAnalysisResponse();
             if (ncsAnalysis == null || ncsAnalysis.candidates() == null || ncsAnalysis.candidates().isEmpty()) {
-                log.error("[CompetencyAnalysisProcessor.process] NCS analysis result is missing or empty - aborting");
-                throw new IllegalArgumentException("NCS analysis result is required for competency analysis");
+                long duration = System.currentTimeMillis() - totalStartTime;
+                log.error("[CompetencyAnalysisProcessor.process] NCS analysis result is missing or empty - aborting, duration: {}ms", duration);
+                context.setSuccess(false);
+                context.setErrorMessage("Required analysis results missing: NCS analysis is null or empty");
+                log.info("[CompetencyAnalysisProcessor.process] EXIT (NCS ANALYSIS MISSING) - duration: {}ms", duration);
+                return context;
             }
             log.debug("[CompetencyAnalysisProcessor.process] NCS analysis loaded - candidatesCount: {}",
                 ncsAnalysis.candidates().size());

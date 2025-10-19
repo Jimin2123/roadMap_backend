@@ -37,8 +37,15 @@ public class ProfileSkill {
 
   @Builder
   private ProfileSkill(Profile profile, Skill skill, SkillProficiency proficiency) {
-    if (profile == null || skill == null || proficiency == null)
-      throw new IllegalArgumentException("profile/skill/proficiency must not be null");
+    if (skill == null || proficiency == null)
+      throw new IllegalArgumentException("skill/proficiency must not be null");
+
+    // Initialize embedded ID
+    if (profile != null && skill.getId() != null) {
+      this.id = new ProfileSkillId(profile.getId(), skill.getId());
+    } else if (this.id == null) {
+      this.id = new ProfileSkillId();  // Empty ID for detached entities
+    }
 
     this.profile = profile;   // @MapsId("profileId")가 채움
     this.skill = skill;       // @MapsId("skillId")가 채움

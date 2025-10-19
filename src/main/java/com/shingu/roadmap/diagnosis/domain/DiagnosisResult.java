@@ -204,6 +204,15 @@ public class DiagnosisResult extends BaseEntity {
     }
 
     /**
+     * 진단이 삭제되었는지 확인 (FAILED 상태를 삭제로 간주)
+     *
+     * @return 삭제 여부
+     */
+    public boolean isDeleted() {
+        return this.status == DiagnosisStatus.FAILED;
+    }
+
+    /**
      * 신뢰도 점수 조회 (resultData에서 추출)
      *
      * @return 신뢰도 점수 (없으면 null)
