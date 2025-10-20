@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@AllArgsConstructor(access = AccessLevel.PRIVATE) // for @Builder
+@AllArgsConstructor(access = AccessLevel.PUBLIC) // for @Builder
 @Builder(toBuilder = true)
 @EqualsAndHashCode(of = "id")
 public class Account {
@@ -34,6 +34,12 @@ public class Account {
 
   @Column
   private LocalDateTime lastLogin;
+
+  @Column(nullable = true) // 일반 가입 회원은 null
+  private String provider;    // 예: "google", "naver", "kakao"
+
+  @Column(nullable = true) // 일반 가입 회원은 null
+  private String providerId;  // Provider가 제공하는 고유 ID
 
   // Member가 주인(JoinColumn은 Member에 있음) → 여기서는 역방향만 보유
   @OneToOne(mappedBy = "account", fetch = FetchType.LAZY)

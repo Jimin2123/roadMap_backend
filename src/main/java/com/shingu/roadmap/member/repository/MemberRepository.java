@@ -12,6 +12,10 @@ import jakarta.persistence.LockModeType;
 import java.util.Optional;
 
 public interface MemberRepository extends JpaRepository<Member, Long> {
+
+  @Query("SELECT m FROM Member m JOIN FETCH m.account WHERE m.account.provider = :provider AND m.account.providerId = :providerId")
+  Optional<Member> findByProviderAndProviderId(@Param("provider") String provider, @Param("providerId") String providerId);
+
   @Query("SELECT m FROM Member m JOIN FETCH m.account WHERE m.account.email.value = :email")
   Optional<Member> findByAccountEmail(@Param("email") String email);
 
