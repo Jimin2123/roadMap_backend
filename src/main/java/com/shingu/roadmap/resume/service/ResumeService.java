@@ -13,6 +13,7 @@ import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.resume.dto.request.*;
 import com.shingu.roadmap.resume.dto.response.ResumeResponse;
 import com.shingu.roadmap.resume.exception.*;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ public class ResumeService {
   private final MemberService memberService;
   private final SkillRepository skillRepository;
   private final CertificateRepository certificateRepository;
+  private final EntityManager entityManager;
 
   /* ============================ Commands ============================ */
 
@@ -132,6 +134,13 @@ public class ResumeService {
 
     // Activities / Projects 업데이트 (기존 데이터 클리어 후 새로 추가)
     resume.getActivities().clear();
+    resume.getProjects().clear();
+    resume.getCareers().clear();
+    resume.getCertificates().clear();
+
+    // Flush to persist deletions before adding new entities
+    entityManager.flush();
+
     if (!CollectionUtils.isEmpty(resumeReq.activities())) {
       for (ActivityRequest aReq : resumeReq.activities()) {
         Activity a = toActivity(aReq);
@@ -139,7 +148,6 @@ public class ResumeService {
       }
     }
 
-    resume.getProjects().clear();
     if (!CollectionUtils.isEmpty(resumeReq.projects())) {
       for (ProjectRequest pReq : resumeReq.projects()) {
         Project p = toProjectSkeleton(pReq);
@@ -148,7 +156,6 @@ public class ResumeService {
       }
     }
 
-    resume.getCareers().clear();
     if (!CollectionUtils.isEmpty(resumeReq.careers())) {
       for (CareerRequest cReq : resumeReq.careers()) {
         Career c = toCareer(cReq);
@@ -157,7 +164,6 @@ public class ResumeService {
     }
 
     // Certificates 업데이트
-    resume.getCertificates().clear();
     if (!CollectionUtils.isEmpty(resumeReq.certificates())) {
       for (var certReq : resumeReq.certificates()) {
         ResumeCertificate rc = resumeCertificateOf(resume, certReq.name(), certReq.year());

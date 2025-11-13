@@ -2,6 +2,7 @@ package com.shingu.roadmap.resume.dto.response;
 
 import com.shingu.roadmap.common.dto.CertificateDTO;
 import com.shingu.roadmap.resume.domain.Activity;
+import com.shingu.roadmap.resume.domain.Career;
 import com.shingu.roadmap.resume.domain.Project;
 import com.shingu.roadmap.resume.domain.Resume;
 
@@ -15,6 +16,7 @@ public record ResumeResponse(
         IntroductionResponse introduction,
         EducationResponse education,
         DesiredCompanyResponse desiredCompany,
+        List<CareerResponse> careers,
         List<ActivityResponse> activities,
         List<ProjectResponse> projects,
         Set<CertificateDTO> certificates
@@ -32,6 +34,11 @@ public record ResumeResponse(
             .reversed()
             .thenComparing(Project::getId, Comparator.nullsLast(Comparator.reverseOrder()));
 
+    Comparator<Career> careerOrder = Comparator
+            .comparing((Career c) -> c.getPeriod() != null ? c.getPeriod().getStartDate() : LocalDate.MIN)
+            .reversed()
+            .thenComparing(Career::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+
     List<ActivityResponse> activityDtos = resume.getActivities().stream()
             .sorted(activityOrder)
             .map(ActivityResponse::from)
@@ -42,6 +49,11 @@ public record ResumeResponse(
             .map(ProjectResponse::from)
             .toList();
 
+    List<CareerResponse> careerDtos = resume.getCareers().stream()
+            .sorted(careerOrder)
+            .map(CareerResponse::from)
+            .toList();
+
     Set<CertificateDTO> certificateDtos = resume.getCertificates().stream()
             .map(CertificateDTO::from)
             .collect(Collectors.toSet());
@@ -50,6 +62,7 @@ public record ResumeResponse(
             IntroductionResponse.from(resume.getIntroduction()),
             EducationResponse.from(resume.getEducation()),
             DesiredCompanyResponse.from(resume.getDesiredCompany()),
+            careerDtos,
             activityDtos,
             projectDtos,
             certificateDtos

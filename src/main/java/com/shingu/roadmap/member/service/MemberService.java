@@ -22,6 +22,7 @@ import com.shingu.roadmap.member.dto.response.ProfileResponse;
 import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.resume.domain.*;
 import com.shingu.roadmap.member.exception.*;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -48,6 +49,7 @@ public class MemberService {
     private final NcsApiService ncsApiService;
     private final SaraminJobRepository saraminJobRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EntityManager entityManager;
 
     /* ====================================================================== */
     /* Public Usecases                                                        */
@@ -71,14 +73,22 @@ public class MemberService {
     public MemberResponse updateProfile(Long memberId, ProfileRequest req, Resume resume) {
         Member member = findMember(memberId);
 
-        // 기존 프로필 조립
-        Profile profile = assembleProfile(req, resume);
+        // 기존 프로필이 있으면 업데이트, 없으면 새로 생성
+        Profile profile = member.getProfile();
+        if (profile == null) {
+            profile = assembleProfile(req, resume);
+            member.setProfile(profile);
+        } else {
+            // 기존 프로필 업데이트 (도메인 메서드 사용)
+            profile.updateEducationLevel(req.educationLevel() != null ? req.educationLevel().name() : null);
+            profile.updateProfileImageUrl(req.profileImageUrl());
+            profile.setResume(resume);
+        }
 
         // 스킬/희망직무 보강
         enrichWithSkills(req, profile);
         enrichWithDesiredJobs(req, profile);
 
-        member.setProfile(profile);
         return MemberResponse.from(member);
     }
 
@@ -199,6 +209,10 @@ public class MemberService {
 
     private void enrichWithSkills(ProfileRequest req, Profile profile) {
         profile.getProfileSkills().clear();
+
+        // Flush to persist deletions before adding new entities
+        entityManager.flush();
+
         if (req == null || CollectionUtils.isEmpty(req.skills())) return;
 
         for (var skillReq : req.skills()) {

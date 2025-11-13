@@ -37,7 +37,7 @@ public class SaraminClient {
     UriComponentsBuilder builder = UriComponentsBuilder
             .fromUriString(properties.getBaseUrl())
             .queryParam("access-key", properties.getApiKey())
-            .queryParam("count", 21)
+            .queryParam("count", 20)
             .queryParam("sort", "pd");
 
 //    if(keyword != null && !keyword.isEmpty()) {
