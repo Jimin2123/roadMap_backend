@@ -105,6 +105,12 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
         log.debug("[DiagnosisController.streamDiagnosisProgress] ENTER - diagnosisId: {}, userDetails: {}",
             diagnosisId, userDetails != null ? userDetails.getUsername() : "null");
 
+        // 인증 확인 (SSE 응답 커밋 전에 체크)
+        if (userDetails == null) {
+            log.error("[DiagnosisController.streamDiagnosisProgress] Unauthenticated access attempt - diagnosisId: {}", diagnosisId);
+            throw new org.springframework.security.access.AccessDeniedException("Authentication required");
+        }
+
         long startTime = System.currentTimeMillis();
 
         try {

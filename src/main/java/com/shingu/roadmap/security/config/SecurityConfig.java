@@ -76,11 +76,13 @@ public class SecurityConfig {
                             "/api/v1/training", // 교육 과정 조회
                             "/api/v1/policy", // 정책 조회
                             "/api/v1/certificate/exam-schedule", // 자격증 시험 일정 조회
+                            "/api/v1/diagnosis/*/stream", // SSE 스트림 (async dispatch 허용, 컨트롤러에서 인증 검증)
                             "/api-docs/**",
                             "/v3/api-docs/**",
                             "/swagger-ui/**",
                             "/swagger-ui.html"
                     ).permitAll()
+                    .requestMatchers("/api/v1/diagnosis/**").authenticated() // 진단 API는 인증 필요
                     .anyRequest().authenticated()
             )
             .addFilterBefore(securityHeadersFilter(), UsernamePasswordAuthenticationFilter.class)
