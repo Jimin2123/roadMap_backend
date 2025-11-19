@@ -4,6 +4,8 @@ import com.shingu.roadmap.apis.ncs.dto.response.NcsJobPositionResponse;
 import com.shingu.roadmap.apis.ncs.dto.response.NcsKsaResponse;
 import com.shingu.roadmap.apis.ncs.service.NcsApiService;
 import com.shingu.roadmap.apis.openai.service.OpenAiService;
+import com.shingu.roadmap.apis.openai.service.workflow.NcsCompetencyAnalysisWorkflow;
+import com.shingu.roadmap.apis.openai.util.ResumeTextFormatter;
 import com.shingu.roadmap.diagnosis.dto.common.Evidence;
 import com.shingu.roadmap.diagnosis.dto.common.EvidenceSourceType;
 import com.shingu.roadmap.diagnosis.dto.common.NcsRecommendationCandidate;
@@ -38,6 +40,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
     private final NcsApiService ncsApiService;
     private final OpenAiService openAiService;
+    private final ResumeTextFormatter resumeTextFormatter;
 
     @Override
     public DiagnosisContext process(DiagnosisContext context) {
@@ -256,7 +259,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             }
 
             // AI 분석 호출
-            Map<String, OpenAiService.KsaEvaluationResult> aiResults;
+            Map<String, NcsCompetencyAnalysisWorkflow.KsaEvaluationResult> aiResults;
             try {
                 aiResults = openAiService.analyzeKsaCompetency(ncsCode, itemNames, profile).block();
             } catch (Exception e) {
@@ -277,7 +280,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             List<KsaAnalysisResponse.KsaItem> result = ksaItems.stream()
                     .map(rawItem -> {
                         String itemName = rawItem.gbnName();
-                        OpenAiService.KsaEvaluationResult aiResult = aiResults.get(itemName);
+                        NcsCompetencyAnalysisWorkflow.KsaEvaluationResult aiResult = aiResults.get(itemName);
 
                         if (aiResult == null) {
                             // AI 결과가 없는 항목은 기본 분석 사용
@@ -407,7 +410,8 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
         // 프로젝트 경험 매칭
         if (profile.getResume() != null && profile.getResume().getProjects() != null) {
-            String resumeText = openAiService.resumeToText(profile.getResume()).toLowerCase();
+            String resumeText = resumeTextFormatter
+                    .resumeToText(profile.getResume()).toLowerCase();
             if (resumeText.contains(ksaName.toLowerCase())) {
                 score += 0.2;
             }

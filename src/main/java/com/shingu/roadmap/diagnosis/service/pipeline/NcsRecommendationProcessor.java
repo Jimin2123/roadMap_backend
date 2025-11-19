@@ -36,6 +36,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
 
     private final OpenAiService openAiService;
     private final NcsApiService ncsApiService;
+    private final com.shingu.roadmap.apis.openai.util.ResumeTextFormatter resumeTextFormatter;
 
     private static final double HIGH_CONFIDENCE_THRESHOLD = 0.85;
     private static final int MAX_RECOMMENDATION_COUNT = 5;
@@ -259,12 +260,12 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             // AI 기반 신뢰도 평가
             log.debug("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Starting AI confidence evaluation");
             long aiEvalStartTime = System.currentTimeMillis();
-            OpenAiService.NcsConfidenceEvaluation aiEvaluation = openAiService
+            com.shingu.roadmap.apis.openai.service.workflow.NcsCompetencyAnalysisWorkflow.NcsConfidenceEvaluation aiEvaluation = openAiService
                     .evaluateNcsMatchConfidence(ncsCode, ncsName, compUnitNames, profile)
                     .onErrorResume(e -> {
                         log.warn("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] AI evaluation failed for {} - error: {}, using fallback",
                             ncsCode, e.getMessage());
-                        return reactor.core.publisher.Mono.just(new OpenAiService.NcsConfidenceEvaluation(
+                        return reactor.core.publisher.Mono.just(new com.shingu.roadmap.apis.openai.service.workflow.NcsCompetencyAnalysisWorkflow.NcsConfidenceEvaluation(
                                 ruleBasedConfidence,
                                 "ADEQUATE",
                                 Collections.emptyList(),
@@ -350,7 +351,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
         double skillBonus = Math.min(0.2, matchingSkills * 0.05);
 
         // 프로젝트 경험 매칭도
-        String resumeText = openAiService.resumeToText(profile.getResume()).toLowerCase();
+        String resumeText = resumeTextFormatter.resumeToText(profile.getResume()).toLowerCase();
         long matchingCompUnits = compUnitNames.stream()
                 .filter(compUnit -> resumeText.contains(compUnit.toLowerCase()))
                 .count();
@@ -365,7 +366,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
      */
     private List<Evidence> generateEvidenceFromAiEvaluation(
             Profile profile,
-            OpenAiService.NcsConfidenceEvaluation aiEvaluation
+            com.shingu.roadmap.apis.openai.service.workflow.NcsCompetencyAnalysisWorkflow.NcsConfidenceEvaluation aiEvaluation
     ) {
         List<Evidence> evidences = new ArrayList<>();
 
@@ -409,7 +410,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
      */
     private String generateReasonFromAiEvaluation(
             String ncsName,
-            OpenAiService.NcsConfidenceEvaluation aiEvaluation
+            com.shingu.roadmap.apis.openai.service.workflow.NcsCompetencyAnalysisWorkflow.NcsConfidenceEvaluation aiEvaluation
     ) {
 
       return String.format("%s 직무는 귀하의 프로필과 %s 수준의 적합도를 보입니다. ",
