@@ -10,9 +10,11 @@ import com.shingu.roadmap.diagnosis.exception.DiagnosisAccessDeniedException;
 import com.shingu.roadmap.diagnosis.exception.DiagnosisAlreadyInProgressException;
 import com.shingu.roadmap.diagnosis.exception.DiagnosisNotFoundException;
 import com.shingu.roadmap.diagnosis.repository.DiagnosisResultRepository;
+import com.shingu.roadmap.diagnosis.service.pipeline.CertificationRecommendationProcessor;
 import com.shingu.roadmap.diagnosis.service.pipeline.CompetencyAnalysisProcessor;
 import com.shingu.roadmap.diagnosis.service.pipeline.DiagnosisContext;
 import com.shingu.roadmap.diagnosis.service.pipeline.DiagnosisProcessor;
+import com.shingu.roadmap.diagnosis.service.pipeline.JobRecommendationProcessor;
 import com.shingu.roadmap.diagnosis.service.pipeline.NcsRecommendationProcessor;
 import com.shingu.roadmap.diagnosis.service.pipeline.ReportGenerationProcessor;
 import com.shingu.roadmap.member.domain.Member;
@@ -43,14 +45,18 @@ public class DiagnosisService {
     private final DiagnosisResultRepository diagnosisResultRepository;
     private final NcsRecommendationProcessor ncsRecommendationProcessor;
     private final CompetencyAnalysisProcessor competencyAnalysisProcessor;
+    private final JobRecommendationProcessor jobRecommendationProcessor;
+    private final CertificationRecommendationProcessor certificationRecommendationProcessor;
     private final ReportGenerationProcessor reportGenerationProcessor;
     private final DiagnosisEmitterManager emitterManager;
     private final DiagnosisStateService diagnosisStateService; // 분리된 서비스 주입
 
     // 프로세서별 진행률 및 메시지 매핑
     private static final Map<String, ProcessorProgress> PROCESSOR_PROGRESS_MAP = Map.of(
-            "NcsRecommendationProcessor", new ProcessorProgress(DiagnosisStep.NCS_CODE_SUGGESTION, 33, "NCS 직무 코드를 추천하고 있습니다..."),
-            "CompetencyAnalysisProcessor", new ProcessorProgress(DiagnosisStep.JOB_MATCHING, 66, "역량을 분석하고 있습니다..."),
+            "NcsRecommendationProcessor", new ProcessorProgress(DiagnosisStep.NCS_CODE_SUGGESTION, 20, "NCS 직무 코드를 추천하고 있습니다..."),
+            "CompetencyAnalysisProcessor", new ProcessorProgress(DiagnosisStep.JOB_MATCHING, 40, "역량을 분석하고 있습니다..."),
+            "JobRecommendationProcessor", new ProcessorProgress(DiagnosisStep.JOB_MATCHING, 60, "맞춤 채용공고를 검색하고 있습니다..."),
+            "CertificationRecommendationProcessor", new ProcessorProgress(DiagnosisStep.JOB_MATCHING, 75, "필요한 자격증을 추천하고 있습니다..."),
             "ReportGenerationProcessor", new ProcessorProgress(DiagnosisStep.FINAL_REPORT, 90, "최종 보고서를 생성하고 있습니다...")
     );
 
@@ -101,6 +107,8 @@ public class DiagnosisService {
             List<DiagnosisProcessor> processors = List.of(
                     ncsRecommendationProcessor,
                     competencyAnalysisProcessor,
+                    jobRecommendationProcessor,
+                    certificationRecommendationProcessor,
                     reportGenerationProcessor
             );
             log.info("[DiagnosisService.executeDiagnosisAsync] Starting pipeline with {} processors", processors.size());
@@ -408,12 +416,16 @@ public class DiagnosisService {
                     .ncsAnalyses(resultData.getNcsAnalyses())
                     .confidenceScore(resultData.getConfidenceScore())
                     .radarChartData(resultData.getRadarChartData())
+                    .jobRecommendations(resultData.getJobRecommendations())
+                    .certificationRecommendations(resultData.getCertificationRecommendations())
                     .build();
 
             long duration = System.currentTimeMillis() - startTime;
-            log.info("[DiagnosisService.findDiagnosisResult] EXIT - diagnosisId: {}, duration: {}ms, confidenceScore: {}, ncsAnalysesCount: {}",
+            log.info("[DiagnosisService.findDiagnosisResult] EXIT - diagnosisId: {}, duration: {}ms, confidenceScore: {}, ncsAnalysesCount: {}, jobRecommendationsCount: {}, certificationRecommendationsCount: {}",
                 diagnosisId, duration, response.confidenceScore(),
-                response.ncsAnalyses() != null ? response.ncsAnalyses().size() : 0);
+                response.ncsAnalyses() != null ? response.ncsAnalyses().size() : 0,
+                response.jobRecommendations() != null ? response.jobRecommendations().size() : 0,
+                response.certificationRecommendations() != null ? response.certificationRecommendations().size() : 0);
             return response;
 
         } catch (DiagnosisNotFoundException | IllegalStateException e) {
@@ -551,6 +563,8 @@ public class DiagnosisService {
             // 3. 2단계부터 파이프라인 실행
             List<DiagnosisProcessor> processors = List.of(
                     competencyAnalysisProcessor,
+                    jobRecommendationProcessor,
+                    certificationRecommendationProcessor,
                     reportGenerationProcessor
             );
             log.info("[DiagnosisService.continueWithUserSelectionAsync] Starting continuation pipeline with {} processors (skipping NCS recommendation)",

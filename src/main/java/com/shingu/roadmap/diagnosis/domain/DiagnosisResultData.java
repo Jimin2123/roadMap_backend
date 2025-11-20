@@ -1,6 +1,8 @@
 package com.shingu.roadmap.diagnosis.domain;
 
 import com.shingu.roadmap.diagnosis.dto.common.RadarChartData;
+import com.shingu.roadmap.diagnosis.dto.response.CertificationRecommendationResponse;
+import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
 import lombok.*;
 
@@ -43,22 +45,41 @@ public class DiagnosisResultData {
     private RadarChartData radarChartData;
 
     /**
+     * 추천 채용공고 목록
+     */
+    private List<JobRecommendationResponse> jobRecommendations;
+
+    /**
+     * 추천 자격증 목록
+     */
+    private List<CertificationRecommendationResponse> certificationRecommendations;
+
+    /**
      * DiagnosisResultResponse로부터 DiagnosisResultData 생성
      *
-     * @param response 진단 결과 응답 DTO
+     * @param summary 진단 결과 요약
+     * @param ncsAnalyses NCS 분석 결과 목록
+     * @param confidenceScore 신뢰도 점수
+     * @param radarChartData 레이더 차트 데이터
+     * @param jobRecommendations 추천 채용공고 목록
+     * @param certificationRecommendations 추천 자격증 목록
      * @return DiagnosisResultData 객체
      */
     public static DiagnosisResultData fromResponse(
             String summary,
             List<NcsAnalysisResponse> ncsAnalyses,
             Double confidenceScore,
-            RadarChartData radarChartData
+            RadarChartData radarChartData,
+            List<JobRecommendationResponse> jobRecommendations,
+            List<CertificationRecommendationResponse> certificationRecommendations
     ) {
         return DiagnosisResultData.builder()
                 .summary(summary)
                 .ncsAnalyses(ncsAnalyses)
                 .confidenceScore(confidenceScore)
                 .radarChartData(radarChartData)
+                .jobRecommendations(jobRecommendations)
+                .certificationRecommendations(certificationRecommendations)
                 .build();
     }
 }

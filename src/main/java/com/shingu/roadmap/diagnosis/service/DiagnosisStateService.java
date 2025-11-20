@@ -298,7 +298,9 @@ public class DiagnosisStateService {
                         response.summary(),
                         response.ncsAnalyses(),
                         response.confidenceScore(),
-                        response.radarChartData()
+                        response.radarChartData(),
+                        response.jobRecommendations(),
+                        response.certificationRecommendations()
                 );
 
         // 진단 완료 (도메인 메서드 사용)

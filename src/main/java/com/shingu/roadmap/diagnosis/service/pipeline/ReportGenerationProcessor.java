@@ -95,7 +95,7 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
             log.info("[ReportGenerationProcessor.process] Summary generated in {}ms - length: {}",
                 summaryDuration, summary.length());
 
-            // 3-4. 최종 리포트 생성
+            // 3-4. 최종 리포트 생성 (채용공고 및 자격증 추천 포함)
             log.debug("[ReportGenerationProcessor.process] Building final diagnosis result");
             DiagnosisResultResponse diagnosisResult = DiagnosisResultResponse.builder()
                     .diagnosisId(null) // 실제 저장 시 할당
@@ -103,7 +103,13 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                     .ncsAnalyses(List.of(enrichedNcsAnalysis))
                     .confidenceScore(enrichedNcsAnalysis.overallConfidence())
                     .radarChartData(radarChartData)
+                    .jobRecommendations(context.getJobRecommendations())
+                    .certificationRecommendations(context.getCertificationRecommendations())
                     .build();
+
+            log.info("[ReportGenerationProcessor.process] Diagnosis result includes {} job recommendations and {} certification recommendations",
+                    context.getJobRecommendations() != null ? context.getJobRecommendations().size() : 0,
+                    context.getCertificationRecommendations() != null ? context.getCertificationRecommendations().size() : 0);
 
             context.setDiagnosisResultResponse(diagnosisResult);
             context.setSuccess(true);

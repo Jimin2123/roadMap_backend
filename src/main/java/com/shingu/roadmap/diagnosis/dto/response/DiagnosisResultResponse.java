@@ -41,6 +41,18 @@ public record DiagnosisResultResponse(
                 description = "레이더 차트 데이터 (사용자 역량 vs 여러 목표 NCS 직무 동시 비교)",
                 requiredMode = Schema.RequiredMode.REQUIRED
         )
-        RadarChartData radarChartData
+        RadarChartData radarChartData,
+
+        @Schema(
+                description = "추천 채용공고 목록",
+                requiredMode = Schema.RequiredMode.NOT_REQUIRED
+        )
+        List<JobRecommendationResponse> jobRecommendations,
+
+        @Schema(
+                description = "추천 자격증 목록",
+                requiredMode = Schema.RequiredMode.NOT_REQUIRED
+        )
+        List<CertificationRecommendationResponse> certificationRecommendations
 ) {
 }

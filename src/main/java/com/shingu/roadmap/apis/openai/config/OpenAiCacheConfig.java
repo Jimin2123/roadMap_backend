@@ -38,6 +38,8 @@ public class OpenAiCacheConfig {
     public static final String SEARCH_CODES_CACHE = "openai:search-codes";
     public static final String KEYWORD_GENERATION_CACHE = "openai:keyword-generation";
     public static final String ASSISTANT_THREAD_CACHE = "openai:assistant-thread";
+    public static final String JOB_RECOMMENDATION_CACHE = "openai:job-recommendation";
+    public static final String CERTIFICATION_RECOMMENDATION_CACHE = "openai:certification-recommendation";
 
     @Bean("redisCacheManager")
     public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
@@ -79,6 +81,16 @@ public class OpenAiCacheConfig {
         // 사용자 세션과 연관된 일시적 데이터
         cacheConfigurations.put(ASSISTANT_THREAD_CACHE,
             defaultCacheConfig.entryTtl(Duration.ofHours(1)));
+
+        // 채용공고 추천 - 3시간 캐싱 (채용공고는 실시간으로 변경되므로 비교적 짧게)
+        // Saramin API 호출 결과와 AI 평가 결과 모두 포함
+        cacheConfigurations.put(JOB_RECOMMENDATION_CACHE,
+            defaultCacheConfig.entryTtl(Duration.ofHours(3)));
+
+        // 자격증 추천 - 8시간 캐싱 (자격증 정보는 상대적으로 정적)
+        // 사용자 역량 기반 분석 결과이므로 중간 TTL 설정
+        cacheConfigurations.put(CERTIFICATION_RECOMMENDATION_CACHE,
+            defaultCacheConfig.entryTtl(Duration.ofHours(8)));
 
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(defaultCacheConfig)

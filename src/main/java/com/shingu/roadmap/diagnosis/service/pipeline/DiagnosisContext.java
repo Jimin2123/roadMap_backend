@@ -1,7 +1,9 @@
 package com.shingu.roadmap.diagnosis.service.pipeline;
 
+import com.shingu.roadmap.diagnosis.dto.response.CertificationRecommendationResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
+import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
 import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
 import com.shingu.roadmap.member.domain.Profile;
@@ -52,7 +54,17 @@ public class DiagnosisContext {
     private String careerLevel;
 
     /**
-     * 3단계: 최종 진단 리포트
+     * 3단계: 채용공고 추천 결과
+     */
+    private List<JobRecommendationResponse> jobRecommendations;
+
+    /**
+     * 3단계: 자격증 추천 결과
+     */
+    private List<CertificationRecommendationResponse> certificationRecommendations;
+
+    /**
+     * 4단계: 최종 진단 리포트
      */
     private DiagnosisResultResponse diagnosisResultResponse;
 
