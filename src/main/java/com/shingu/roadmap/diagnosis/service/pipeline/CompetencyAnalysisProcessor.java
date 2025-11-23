@@ -62,40 +62,78 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                 ncsAnalysis.candidates().size());
 
             Profile profile = context.getProfile();
-            log.debug("[CompetencyAnalysisProcessor.process] Determining target NCS code");
-            String targetNcsCode = determineTargetNcsCode(context);
 
-            if (targetNcsCode == null) {
-                long duration = System.currentTimeMillis() - totalStartTime;
-                log.warn("[CompetencyAnalysisProcessor.process] No target NCS code available - duration: {}ms", duration);
-                context.setSuccess(false);
-                context.setErrorMessage("분석 대상 직무가 선택되지 않았습니다.");
-                log.info("[CompetencyAnalysisProcessor.process] EXIT (NO TARGET) - duration: {}ms", duration);
-                return context;
+            // 2-1. 모든 후보에 대해 KSA 분석 수행
+            log.info("[CompetencyAnalysisProcessor.process] Performing KSA analysis for {} candidates",
+                    ncsAnalysis.candidates().size());
+            long ksaStartTime = System.currentTimeMillis();
+
+            List<KsaAnalysisResponse> allKsaAnalysisResponses = new ArrayList<>();
+            int candidateIndex = 0;
+            int totalCandidates = ncsAnalysis.candidates().size();
+
+            for (NcsRecommendationCandidate candidate : ncsAnalysis.candidates()) {
+                candidateIndex++;
+                log.info("[CompetencyAnalysisProcessor.process] Analyzing candidate {}/{} - ncsCode: {}",
+                        candidateIndex, totalCandidates, candidate.ncsCode());
+
+                try {
+                    List<KsaAnalysisResponse> candidateKsaResponses = performKsaAnalysis(
+                            candidate.ncsCode(), profile, context);
+
+                    if (!candidateKsaResponses.isEmpty()) {
+                        allKsaAnalysisResponses.addAll(candidateKsaResponses);
+                        log.debug("[CompetencyAnalysisProcessor.process] KSA analysis successful for ncsCode: {} - {} responses",
+                                candidate.ncsCode(), candidateKsaResponses.size());
+                    } else {
+                        log.warn("[CompetencyAnalysisProcessor.process] KSA analysis returned empty for ncsCode: {}",
+                                candidate.ncsCode());
+                    }
+                } catch (Exception e) {
+                    log.error("[CompetencyAnalysisProcessor.process] KSA analysis failed for ncsCode: {} - error: {}",
+                            candidate.ncsCode(), e.getMessage(), e);
+                    // 개별 후보 실패는 무시하고 계속 진행
+                }
+
+                // 진행률 업데이트 (40% ~ 60% 범위)
+                int progress = 40 + (20 * candidateIndex / totalCandidates);
+                reportProgress(context, progress,
+                        String.format("역량 분석 중... (%d/%d)", candidateIndex, totalCandidates));
             }
 
-            log.info("[CompetencyAnalysisProcessor.process] Target NCS code determined: {} (userSelected: {})",
-                targetNcsCode, context.getUserSelectedNcsCode() != null);
-
-            // 2-1. KSA 분석 수행
-            log.debug("[CompetencyAnalysisProcessor.process] Starting KSA analysis");
-            long ksaStartTime = System.currentTimeMillis();
-            List<KsaAnalysisResponse> ksaAnalysisResponses = performKsaAnalysis(targetNcsCode, profile, context);
             long ksaDuration = System.currentTimeMillis() - ksaStartTime;
-            log.info("[CompetencyAnalysisProcessor.process] KSA analysis completed in {}ms - responsesCount: {}",
-                ksaDuration, ksaAnalysisResponses.size());
+            log.info("[CompetencyAnalysisProcessor.process] All KSA analyses completed in {}ms - totalResponses: {}",
+                    ksaDuration, allKsaAnalysisResponses.size());
 
-            if (ksaAnalysisResponses.isEmpty()) {
+            if (allKsaAnalysisResponses.isEmpty()) {
                 long duration = System.currentTimeMillis() - totalStartTime;
-                log.warn("[CompetencyAnalysisProcessor.process] KSA analysis returned empty results - ncsCode: {}, duration: {}ms",
-                    targetNcsCode, duration);
+                log.warn("[CompetencyAnalysisProcessor.process] No KSA analysis results for any candidate - duration: {}ms",
+                        duration);
                 context.setSuccess(false);
                 context.setErrorMessage("KSA 역량 분석에 실패했습니다.");
-                log.info("[CompetencyAnalysisProcessor.process] EXIT (KSA FAILED) - duration: {}ms", duration);
+                log.info("[CompetencyAnalysisProcessor.process] EXIT (ALL KSA FAILED) - duration: {}ms", duration);
                 return context;
             }
 
             reportProgress(context, 63, "커리어 레벨을 진단하고 있습니다.");
+
+            // 2-2. 타겟 NCS 코드 결정 (커리어 레벨 진단용)
+            log.debug("[CompetencyAnalysisProcessor.process] Determining target NCS code for career level diagnosis");
+            String targetNcsCode = determineTargetNcsCode(context);
+
+            if (targetNcsCode == null) {
+                long duration = System.currentTimeMillis() - totalStartTime;
+                log.warn("[CompetencyAnalysisProcessor.process] No target NCS code available for career level - duration: {}ms", duration);
+                // KSA 분석은 완료되었으므로 커리어 레벨만 기본값 사용
+                context.setKsaAnalysisResponses(allKsaAnalysisResponses);
+                context.setCareerLevel("신입 / 초급"); // 기본값
+                context.setSuccess(true);
+                reportProgress(context, 66, "역량 분석이 완료되었습니다.");
+                return context;
+            }
+
+            log.info("[CompetencyAnalysisProcessor.process] Target NCS code determined: {} (userSelected: {})",
+                    targetNcsCode, context.getUserSelectedNcsCode() != null);
 
             // 2-3. 커리어 레벨 진단
             log.debug("[CompetencyAnalysisProcessor.process] Starting career level diagnosis");
@@ -105,7 +143,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             log.info("[CompetencyAnalysisProcessor.process] Career level diagnosed in {}ms - level: {}",
                 careerDuration, careerLevel);
 
-            context.setKsaAnalysisResponses(ksaAnalysisResponses);
+            context.setKsaAnalysisResponses(allKsaAnalysisResponses);
             context.setCareerLevel(careerLevel);
             context.setSuccess(true);
 
@@ -113,7 +151,7 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
 
             long totalDuration = System.currentTimeMillis() - totalStartTime;
             log.info("[CompetencyAnalysisProcessor.process] EXIT (SUCCESS) - totalDuration: {}ms, targetNcsCode: {}, careerLevel: {}, ksaResponsesCount: {}",
-                    totalDuration, targetNcsCode, careerLevel, ksaAnalysisResponses.size());
+                    totalDuration, targetNcsCode, careerLevel, allKsaAnalysisResponses.size());
 
             return context;
 
