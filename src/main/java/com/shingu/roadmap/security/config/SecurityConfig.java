@@ -78,6 +78,7 @@ public class SecurityConfig {
                             "/api/v1/certificate/exam-schedule", // 자격증 시험 일정 조회
                             "/api-docs/**",
                             "/v3/api-docs/**",
+                            "/api/v1/images/**",
                             "/swagger-ui/**",
                             "/swagger-ui.html"
                     ).permitAll()
