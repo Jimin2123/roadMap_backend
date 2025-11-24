@@ -12,7 +12,9 @@ import com.shingu.roadmap.apis.saramin.client.SaraminClient;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
+import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.member.domain.Profile;
+import com.shingu.roadmap.resume.domain.Period;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
@@ -23,13 +25,14 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 채용공고 추천 워크플로우 (실전 버전)
+ * AI 기반 채용공고 추천 워크플로우 (OpenAI 완전 활용 버전)
  *
- * 개선 사항:
- * 1. NCS 코드만으로 직접 Saramin API 검색 (희망 직무 의존성 제거)
- * 2. AI 평가 간소화 (비용 절감)
- * 3. Saramin API 실패 시 graceful degradation
- * 4. 상세한 로깅 및 에러 처리
+ * 핵심 개선 사항:
+ * 1. 규칙 기반 매칭 제거 → OpenAI가 모든 평가 수행
+ * 2. 페이지네이션을 통한 적합도 높은 공고 수집
+ * 3. KSA 분석 결과를 포함한 종합적 프로필 평가
+ * 4. 최소 매칭 점수(65점) 이상 공고만 필터링
+ * 5. AI가 생성한 맞춤형 추천 이유 제공
  */
 @Service
 @RequiredArgsConstructor
@@ -43,20 +46,35 @@ public class JobRecommendationWorkflow {
     private final ResumeTextFormatter resumeTextFormatter;
 
     /**
-     * 사용자 프로필과 NCS 코드를 기반으로 채용공고를 추천합니다.
+     * 채용공고 추천 설정 상수
+     */
+    private static final int MIN_MATCH_SCORE = 65;  // 최소 매칭 점수
+    private static final int TARGET_JOB_COUNT = 10; // 목표 추천 공고 개수
+    private static final int MAX_PAGES = 5;          // 최대 탐색 페이지 수
+    private static final int JOBS_PER_PAGE = 20;    // 페이지당 채용공고 수
+
+    /**
+     * 사용자 프로필, KSA 분석 결과, NCS 코드를 기반으로 AI가 채용공고를 추천합니다.
      *
-     * 전략:
-     * 1. 사용자의 희망 직무가 있으면 우선 사용
-     * 2. 없으면 NCS 직무명 키워드로 검색
-     * 3. 검색 결과가 없으면 IT 일반 직무로 폴백
+     * 페이지네이션 전략:
+     * 1. 1페이지부터 시작하여 Saramin API에서 채용공고 조회
+     * 2. OpenAI를 사용하여 각 공고의 매칭 점수와 추천 이유 생성
+     * 3. 매칭 점수 65점 이상인 공고만 수집
+     * 4. 10개 이상 수집될 때까지 다음 페이지로 이동 (최대 5페이지)
+     * 5. 수집된 공고를 매칭 점수 순으로 정렬하여 반환
      *
-     * @param profile 사용자 프로필
+     * @param profile 사용자 프로필 (경력, 학력, 스킬, 자격증 포함)
      * @param ncsCode 추천된 NCS 코드
+     * @param ksaAnalysis KSA 역량 분석 결과 (선택적)
      * @return 추천 채용공고 리스트
      */
     @Cacheable(value = OpenAiCacheConfig.JOB_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
-    public Mono<List<JobRecommendationResponse>> recommendJobs(Profile profile, String ncsCode) {
-        log.info("[JobRecommendationWorkflow] Starting job recommendation - memberId: {}, ncsCode: {}",
+    public Mono<List<JobRecommendationResponse>> recommendJobs(
+            Profile profile,
+            String ncsCode,
+            KsaAnalysisResponse ksaAnalysis) {
+
+        log.info("[JobRecommendationWorkflow] Starting AI-based job recommendation - memberId: {}, ncsCode: {}",
                 profile.getMember().getId(), ncsCode);
 
         // 1. NCS 코드 검증 및 직무 정보 조회
@@ -64,7 +82,7 @@ public class JobRecommendationWorkflow {
             Set<NcsOccupation> validOccupations = ncsApiService.filterValidNcsCodes(Set.of(ncsCode));
             if (validOccupations.isEmpty()) {
                 log.warn("[JobRecommendationWorkflow] Invalid NCS code: {}, returning empty list", ncsCode);
-                return null; // null을 반환하여 다음 단계에서 처리
+                return null;
             }
             return validOccupations.iterator().next();
         }).flatMap(ncsOccupation -> {
@@ -76,22 +94,11 @@ public class JobRecommendationWorkflow {
             log.info("[JobRecommendationWorkflow] NCS occupation found - code: {}, name: {}",
                     ncsOccupation.getDutyCd(), ncsOccupation.getDutyNm());
 
-            // 2. Saramin API 호출 전략 결정
-            return fetchJobsFromSaramin(profile, ncsOccupation)
-                    .flatMap(jobs -> {
-                        if (jobs.isEmpty()) {
-                            log.warn("[JobRecommendationWorkflow] No jobs found, returning empty list");
-                            return Mono.just(Collections.<JobRecommendationResponse>emptyList());
-                        }
-
-                        log.info("[JobRecommendationWorkflow] Found {} jobs from Saramin API", jobs.size());
-
-                        // 3. 채용공고를 간단히 변환 (AI 평가는 선택적)
-                        return convertToRecommendations(profile, ncsOccupation, jobs);
-                    });
+            // 2. 페이지네이션을 통한 적합 공고 수집
+            return collectQualifiedJobsWithPagination(profile, ncsOccupation, ksaAnalysis);
         })
         .doOnSuccess(recommendations ->
-                log.info("[JobRecommendationWorkflow] Job recommendation completed - count: {}",
+                log.info("[JobRecommendationWorkflow] AI job recommendation completed - count: {}",
                         recommendations != null ? recommendations.size() : 0)
         )
         .doOnError(e ->
@@ -104,191 +111,426 @@ public class JobRecommendationWorkflow {
     }
 
     /**
-     * Saramin API에서 채용공고를 가져옵니다.
-     *
-     * 우선순위:
-     * 1. 사용자 희망 직무 코드
-     * 2. NCS 직무명 키워드 검색
-     * 3. 폴백: IT 전체 직군
+     * 하위 호환성을 위한 오버로드 메서드 (KSA 분석 없이 호출 가능)
      */
-    private Mono<List<SaraminJobListResponse.Jobs.Job>> fetchJobsFromSaramin(
+    @Cacheable(value = OpenAiCacheConfig.JOB_RECOMMENDATION_CACHE, keyGenerator = "openAiCacheKeyGenerator")
+    public Mono<List<JobRecommendationResponse>> recommendJobs(Profile profile, String ncsCode) {
+        return recommendJobs(profile, ncsCode, null);
+    }
+
+    /**
+     * 페이지네이션을 통해 적합한 채용공고를 수집합니다.
+     *
+     * 로직:
+     * 1. 1페이지부터 순차적으로 Saramin API 호출
+     * 2. 각 페이지의 공고를 OpenAI로 평가
+     * 3. 매칭 점수 65점 이상만 수집
+     * 4. 10개 수집되거나 최대 페이지에 도달할 때까지 반복
+     */
+    private Mono<List<JobRecommendationResponse>> collectQualifiedJobsWithPagination(
             Profile profile,
-            NcsOccupation ncsOccupation) {
+            NcsOccupation ncsOccupation,
+            KsaAnalysisResponse ksaAnalysis) {
 
         return Mono.fromCallable(() -> {
-            SaraminJobListResponse response = null;
+            List<JobRecommendationResponse> qualifiedJobs = new ArrayList<>();
+            int currentPage = 0; // Saramin API는 0부터 시작
+            int pagesExplored = 0;
 
-            // 전략 1: 사용자 희망 직무 코드 사용
-            Set<Integer> desiredJobCodes = profile.getDesiredJobs() != null ?
-                    profile.getDesiredJobs().stream()
-                            .map(SaraminJob::getCode)
-                            .collect(Collectors.toSet()) : Collections.emptySet();
+            log.info("[JobRecommendationWorkflow] Starting pagination - target: {} jobs, maxPages: {}",
+                    TARGET_JOB_COUNT, MAX_PAGES);
 
-            if (!desiredJobCodes.isEmpty()) {
-                log.info("[JobRecommendationWorkflow] Using desired job codes: {}", desiredJobCodes);
+            // 검색 전략 결정 (사용자 희망 직무 우선)
+            Set<Integer> desiredJobCodes = extractDesiredJobCodes(profile);
+            Set<Integer> jobGroupCodes = desiredJobCodes.isEmpty() ? Set.of(2) : null; // IT 그룹 폴백
+
+            while (qualifiedJobs.size() < TARGET_JOB_COUNT && pagesExplored < MAX_PAGES) {
+                pagesExplored++;
+                log.info("[JobRecommendationWorkflow] Fetching page {} (start position: {})",
+                        pagesExplored, currentPage);
+
                 try {
-                    response = saraminClient.getJobList(null, 0, null, null, desiredJobCodes, null);
-                    if (response != null && response.jobs() != null &&
-                        response.jobs().job() != null && !response.jobs().job().isEmpty()) {
-                        log.info("[JobRecommendationWorkflow] Found {} jobs with desired job codes",
-                                response.jobs().job().size());
-                        return response.jobs().job();
+                    // Saramin API 호출
+                    SaraminJobListResponse response = saraminClient.getJobList(
+                            null, currentPage, null, jobGroupCodes, desiredJobCodes, null);
+
+                    if (response == null || response.jobs() == null || response.jobs().job() == null) {
+                        log.warn("[JobRecommendationWorkflow] No response from Saramin API on page {}", pagesExplored);
+                        break;
                     }
-                } catch (Exception e) {
-                    log.warn("[JobRecommendationWorkflow] Failed to fetch with desired job codes: {}", e.getMessage());
-                }
-            }
 
-            // 전략 2: NCS 직무명으로 키워드 검색
-            String ncsJobName = ncsOccupation.getDutyNm();
-            if (ncsJobName != null && !ncsJobName.isEmpty()) {
-                log.info("[JobRecommendationWorkflow] Using NCS job name keyword: {}", ncsJobName);
-                try {
-                    // Saramin API는 키워드 검색을 지원하지만, 현재 클라이언트 구현에서는 제한적
-                    // 대신 직무 그룹 코드로 검색 (IT 개발: 2, 디자인: 3 등)
-                    Set<Integer> itJobGroupCodes = Set.of(2); // IT/인터넷 그룹
-                    response = saraminClient.getJobList(null, 0, null, itJobGroupCodes, null, null);
+                    List<SaraminJobListResponse.Jobs.Job> jobs = response.jobs().job();
+                    int totalJobs = Integer.parseInt(response.jobs().total());
 
-                    if (response != null && response.jobs() != null &&
-                        response.jobs().job() != null && !response.jobs().job().isEmpty()) {
-                        log.info("[JobRecommendationWorkflow] Found {} jobs with IT job group",
-                                response.jobs().job().size());
-                        return response.jobs().job();
+                    log.info("[JobRecommendationWorkflow] Page {} fetched - jobs: {}, total available: {}",
+                            pagesExplored, jobs.size(), totalJobs);
+
+                    if (jobs.isEmpty()) {
+                        log.info("[JobRecommendationWorkflow] No more jobs available, stopping pagination");
+                        break;
                     }
+
+                    // OpenAI를 사용하여 각 공고 평가
+                    List<JobRecommendationResponse> evaluatedJobs = evaluateJobsWithAI(
+                            profile, ncsOccupation, ksaAnalysis, jobs);
+
+                    // 매칭 점수 65점 이상만 필터링
+                    List<JobRecommendationResponse> qualified = evaluatedJobs.stream()
+                            .filter(job -> job.matchScore() != null && job.matchScore() >= MIN_MATCH_SCORE)
+                            .toList();
+
+                    qualifiedJobs.addAll(qualified);
+
+                    log.info("[JobRecommendationWorkflow] Page {} evaluation complete - qualified: {}/{}, total collected: {}",
+                            pagesExplored, qualified.size(), jobs.size(), qualifiedJobs.size());
+
+                    // 다음 페이지로 이동
+                    currentPage += JOBS_PER_PAGE;
+
+                    // 더 이상 페이지가 없으면 종료
+                    if (currentPage >= totalJobs) {
+                        log.info("[JobRecommendationWorkflow] Reached end of available jobs");
+                        break;
+                    }
+
                 } catch (Exception e) {
-                    log.warn("[JobRecommendationWorkflow] Failed to fetch with NCS keyword: {}", e.getMessage());
+                    log.error("[JobRecommendationWorkflow] Error fetching page {}: {}",
+                            pagesExplored, e.getMessage(), e);
+                    break;
                 }
             }
 
-            // 전략 3: 폴백 - IT 전체 최신 공고
-            log.info("[JobRecommendationWorkflow] Fallback: fetching latest IT jobs");
-            try {
-                Set<Integer> fallbackJobCodes = Set.of(84, 91, 92); // 백엔드, 프론트엔드, 풀스택
-                response = saraminClient.getJobList(null, 0, null, null, fallbackJobCodes, null);
+            log.info("[JobRecommendationWorkflow] Pagination complete - collected {} qualified jobs from {} pages",
+                    qualifiedJobs.size(), pagesExplored);
 
-                if (response != null && response.jobs() != null &&
-                    response.jobs().job() != null && !response.jobs().job().isEmpty()) {
-                    log.info("[JobRecommendationWorkflow] Found {} jobs with fallback strategy",
-                            response.jobs().job().size());
-                    return response.jobs().job();
-                }
-            } catch (Exception e) {
-                log.error("[JobRecommendationWorkflow] Fallback strategy also failed: {}", e.getMessage());
-            }
-
-            log.warn("[JobRecommendationWorkflow] All strategies failed, returning empty list");
-            return Collections.<SaraminJobListResponse.Jobs.Job>emptyList();
+            // 매칭 점수 순으로 정렬하여 상위 10개 반환
+            return qualifiedJobs.stream()
+                    .sorted(Comparator.comparingInt(JobRecommendationResponse::matchScore).reversed())
+                    .limit(TARGET_JOB_COUNT)
+                    .collect(Collectors.toList());
         });
     }
 
     /**
-     * Saramin 채용공고를 추천 응답 DTO로 변환합니다.
-     *
-     * 간소화 버전: AI 평가 없이 직접 변환
-     * - 비용 절감
-     * - 응답 속도 향상
-     * - Saramin API 데이터 직접 활용
+     * 사용자 프로필에서 희망 직무 코드 추출
      */
-    private Mono<List<JobRecommendationResponse>> convertToRecommendations(
-            Profile profile,
-            NcsOccupation ncsOccupation,
-            List<SaraminJobListResponse.Jobs.Job> jobs) {
-
-        log.info("[JobRecommendationWorkflow] Converting {} jobs to recommendations (simple mode)", jobs.size());
-
-        List<JobRecommendationResponse> recommendations = jobs.stream()
-                .limit(10) // 최대 10개
-                .map(job -> {
-                    // 간단한 매칭 점수 계산 (실제로는 더 정교한 로직 가능)
-                    int matchScore = calculateSimpleMatchScore(profile, job);
-                    String reason = generateSimpleReason(ncsOccupation, job);
-
-                    return JobRecommendationResponse.builder()
-                            .jobId(job.id())
-                            .title(job.position().title())
-                            .companyName(job.company().detail().name())
-                            .companyLogoUrl(job.company().detail().logoUrl())
-                            .url(job.url())
-                            .location(job.position().location() != null ?
-                                    job.position().location().name() : null)
-                            .experienceLevel(job.position().experienceLevel() != null ?
-                                    job.position().experienceLevel().name() : null)
-                            .educationLevel(job.position().requiredEducationLevel() != null ?
-                                    job.position().requiredEducationLevel().name() : null)
-                            .jobCode(job.position().jobCode() != null ?
-                                    job.position().jobCode().code() : null)
-                            .jobName(job.position().jobCode() != null ?
-                                    job.position().jobCode().name() : null)
-                            .salary(job.salary() != null ? job.salary().name() : null)
-                            .expirationTimestamp(job.expirationTimestamp())
-                            .recommendationReason(reason)
-                            .matchScore(matchScore)
-                            .build();
-                })
-                .collect(Collectors.toList());
-
-        log.info("[JobRecommendationWorkflow] Converted {} recommendations", recommendations.size());
-        return Mono.just(recommendations);
+    private Set<Integer> extractDesiredJobCodes(Profile profile) {
+        if (profile.getDesiredJobs() == null || profile.getDesiredJobs().isEmpty()) {
+            return Collections.emptySet();
+        }
+        return profile.getDesiredJobs().stream()
+                .map(SaraminJob::getCode)
+                .collect(Collectors.toSet());
     }
 
     /**
-     * 간단한 매칭 점수 계산
+     * OpenAI를 사용하여 채용공고 목록을 평가합니다.
      *
-     * 기준:
-     * - 직무 제목에 사용자 스킬 키워드 포함 여부
-     * - 경력 요구사항 일치도
-     * - 학력 요구사항 일치도
+     * AI가 수행하는 평가:
+     * 1. 사용자 프로필 (경력, 학력, 스킬, 자격증) 분석
+     * 2. KSA 역량 분석 결과 고려
+     * 3. 각 채용공고의 요구사항과 사용자 역량 비교
+     * 4. 0-100점 매칭 점수 산출
+     * 5. 맞춤형 추천 이유 생성
+     *
+     * @return 평가된 채용공고 리스트 (매칭 점수 및 추천 이유 포함)
      */
-    private int calculateSimpleMatchScore(Profile profile, SaraminJobListResponse.Jobs.Job job) {
-        int score = 50; // 기본 점수
+    private List<JobRecommendationResponse> evaluateJobsWithAI(
+            Profile profile,
+            NcsOccupation ncsOccupation,
+            KsaAnalysisResponse ksaAnalysis,
+            List<SaraminJobListResponse.Jobs.Job> jobs) {
 
-        String jobTitle = job.position().title().toLowerCase();
-        String keyword = job.keyword() != null ? job.keyword().toLowerCase() : "";
+        log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
 
-        // 사용자 스킬과 매칭
-        if (profile.getProfileSkills() != null) {
-            long matchedSkills = profile.getProfileSkills().stream()
-                    .map(ps -> ps.getSkill().getName().toLowerCase())
-                    .filter(skillName -> jobTitle.contains(skillName) || keyword.contains(skillName))
-                    .count();
+        // 1. 사용자 프로필 컨텍스트 구성
+        String userContext = buildUserContext(profile, ksaAnalysis);
 
-            score += Math.min(matchedSkills * 10, 30); // 최대 30점 추가
+        // 2. 채용공고 정보 구성
+        String jobsContext = buildJobsContext(jobs);
+
+        // 3. OpenAI 프롬프트 생성
+        String prompt = buildEvaluationPrompt(ncsOccupation, userContext, jobsContext);
+
+        try {
+            // 4. OpenAI API 호출 (Chat Completion)
+            List<Map<String, String>> messages = List.of(
+                    Map.of("role", "system", "content", "당신은 경력 컨설턴트이자 채용 전문가입니다."),
+                    Map.of("role", "user", "content", prompt)
+            );
+            String aiResponse = openAiClient.generateChatCompletion(messages).block();
+
+            // 5. AI 응답 파싱 (JSON 형식 기대)
+            List<JobEvaluationDto> evaluations = parseAiEvaluationResponse(aiResponse);
+
+            // 6. 평가 결과를 JobRecommendationResponse로 변환
+            return jobs.stream()
+                    .map(job -> {
+                        JobEvaluationDto evaluation = findEvaluationForJob(job.id(), evaluations);
+                        return buildJobRecommendation(job, evaluation);
+                    })
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("[JobRecommendationWorkflow] Error during AI evaluation: {}", e.getMessage(), e);
+            // 폴백: AI 평가 실패 시 기본 변환
+            return jobs.stream()
+                    .map(job -> buildJobRecommendation(job, null))
+                    .collect(Collectors.toList());
+        }
+    }
+
+    /**
+     * 사용자 프로필 컨텍스트 구성
+     */
+    private String buildUserContext(Profile profile, KsaAnalysisResponse ksaAnalysis) {
+        StringBuilder context = new StringBuilder();
+
+        context.append("## 사용자 프로필\n\n");
+
+        // 기본 정보
+        context.append("### 기본 정보\n");
+        context.append("- 학력: ").append(profile.getEducationLevel()).append("\n");
+
+        // 경력 사항
+        if (profile.getResume() != null && profile.getResume().getCareers() != null
+                && !profile.getResume().getCareers().isEmpty()) {
+            context.append("\n### 경력 사항\n");
+            profile.getResume().getCareers().forEach(career -> {
+                context.append("- ").append(career.getCompanyName().getValue());
+                if (career.getPeriod() != null) {
+                    context.append(" (").append(formatPeriod(career.getPeriod())).append(")");
+                }
+                context.append("\n");
+                if (career.getDepartment() != null) {
+                    context.append("  부서: ").append(career.getDepartment()).append("\n");
+                }
+                if (career.getDescription() != null) {
+                    context.append("  설명: ").append(career.getDescription()).append("\n");
+                }
+            });
         }
 
-        // 경력 레벨 매칭 (신입 우대)
-        if (job.position().experienceLevel() != null) {
-            int minExp = job.position().experienceLevel().min();
-            if (minExp == 0) {
-                score += 10; // 신입 가능하면 10점 추가
+        // 학력 사항
+        if (profile.getResume() != null && profile.getResume().getEducation() != null) {
+            context.append("\n### 학력 사항\n");
+            var edu = profile.getResume().getEducation();
+            context.append("- ").append(edu.getSchool());
+            if (edu.getPeriod() != null) {
+                context.append(" (").append(formatPeriod(edu.getPeriod())).append(")");
+            }
+            context.append("\n");
+            if (edu.getMajor() != null) {
+                context.append("  전공: ").append(edu.getMajor()).append("\n");
+            }
+            if (edu.getGpa() != null) {
+                context.append("  학점: ").append(edu.getGpa()).append("\n");
             }
         }
 
-        // 학력 요구사항 확인 (제한 없으면 점수 추가)
-        if (job.position().requiredEducationLevel() == null ||
-            "학력무관".equals(job.position().requiredEducationLevel().name())) {
-            score += 10;
+        // 보유 스킬
+        if (profile.getProfileSkills() != null && !profile.getProfileSkills().isEmpty()) {
+            context.append("\n### 보유 스킬\n");
+            profile.getProfileSkills().forEach(ps ->
+                context.append("- ").append(ps.getSkill().getName()).append("\n")
+            );
         }
 
-        return Math.min(score, 100); // 최대 100점
+        // 자격증
+        if (profile.getResume() != null && profile.getResume().getCertificates() != null
+                && !profile.getResume().getCertificates().isEmpty()) {
+            context.append("\n### 자격증\n");
+            profile.getResume().getCertificates().forEach(cert ->
+                context.append("- ").append(cert.getCertificate().getJmfldnm()).append("\n")
+            );
+        }
+
+        // KSA 분석 결과
+        if (ksaAnalysis != null) {
+            context.append("\n### KSA 역량 분석 결과\n");
+            context.append(ksaAnalysis.overallAssessment()).append("\n");
+        }
+
+        return context.toString();
     }
 
     /**
-     * 간단한 추천 이유 생성
+     * 채용공고 정보 컨텍스트 구성
      */
-    private String generateSimpleReason(NcsOccupation ncsOccupation, SaraminJobListResponse.Jobs.Job job) {
-        String ncsName = ncsOccupation.getDutyNm();
-        String companyName = job.company().detail().name();
-        String jobName = job.position().jobCode() != null ?
-                job.position().jobCode().name() : "해당 직무";
+    private String buildJobsContext(List<SaraminJobListResponse.Jobs.Job> jobs) {
+        StringBuilder context = new StringBuilder();
+        context.append("## 채용공고 목록\n\n");
 
-        return String.format("%s 직무와 관련된 %s 포지션입니다. %s에서 모집 중입니다.",
-                ncsName, jobName, companyName);
+        for (int i = 0; i < jobs.size(); i++) {
+            SaraminJobListResponse.Jobs.Job job = jobs.get(i);
+            context.append("### 공고 ").append(i + 1).append(" (ID: ").append(job.id()).append(")\n");
+            context.append("- 제목: ").append(job.position().title()).append("\n");
+            context.append("- 회사: ").append(job.company().detail().name()).append("\n");
+
+            if (job.position().jobCode() != null) {
+                context.append("- 직무: ").append(job.position().jobCode().name()).append("\n");
+            }
+
+            if (job.position().experienceLevel() != null) {
+                context.append("- 경력: ").append(job.position().experienceLevel().name()).append("\n");
+            }
+
+            if (job.position().requiredEducationLevel() != null) {
+                context.append("- 학력: ").append(job.position().requiredEducationLevel().name()).append("\n");
+            }
+
+            if (job.position().location() != null) {
+                context.append("- 지역: ").append(job.position().location().name()).append("\n");
+            }
+
+            if (job.keyword() != null && !job.keyword().isEmpty()) {
+                context.append("- 키워드: ").append(job.keyword()).append("\n");
+            }
+
+            context.append("\n");
+        }
+
+        return context.toString();
     }
 
     /**
-     * AI 평가 결과 DTO (향후 활성화 시 사용)
+     * OpenAI 평가 프롬프트 생성
      */
-    @SuppressWarnings("unused")
+    private String buildEvaluationPrompt(
+            NcsOccupation ncsOccupation,
+            String userContext,
+            String jobsContext) {
+
+        return """
+                당신은 경력 컨설턴트이자 채용 전문가입니다.
+                사용자의 프로필과 역량을 분석하여 각 채용공고와의 적합도를 평가해주세요.
+
+                ## 목표 직무
+                - NCS 코드: %s
+                - 직무명: %s
+
+                %s
+
+                %s
+
+                ## 평가 요청사항
+
+                각 채용공고에 대해 다음을 평가해주세요:
+                1. **매칭 점수 (0-100)**: 사용자 역량과 공고 요구사항의 적합도
+                   - 경력/학력 요구사항 충족 여부
+                   - 보유 스킬과 요구 스킬 일치도
+                   - KSA 역량 분석 결과 반영
+                   - 자격증 관련성
+
+                2. **추천 이유**: 해당 공고를 추천하는 구체적인 이유 (1-2문장)
+                   - 사용자의 강점이 어떻게 활용될 수 있는지
+                   - 부족한 부분이 있다면 어떻게 보완할 수 있는지
+
+                ## 출력 형식 (반드시 JSON 형식으로)
+
+                ```json
+                [
+                  {
+                    "jobId": "공고ID",
+                    "matchScore": 85,
+                    "recommendationReason": "Spring Boot와 MariaDB 경력을 직접 활용할 수 있는 백엔드 개발 포지션입니다. 신입 채용이므로 현재 역량으로 도전 가능합니다."
+                  },
+                  ...
+                ]
+                ```
+
+                주의사항:
+                - 점수는 정확하고 객관적으로 평가해주세요
+                - 65점 미만은 적합하지 않은 공고입니다
+                - 추천 이유는 구체적이고 개인화되어야 합니다
+                """.formatted(ncsOccupation.getDutyCd(), ncsOccupation.getDutyNm(), userContext, jobsContext);
+    }
+
+    /**
+     * AI 응답에서 평가 결과 파싱
+     */
+    private List<JobEvaluationDto> parseAiEvaluationResponse(String aiResponse) {
+        try {
+            // JSON 블록 추출 (```json ... ``` 형식 처리)
+            String jsonContent = aiResponse;
+            if (aiResponse.contains("```json")) {
+                int startIdx = aiResponse.indexOf("```json") + 7;
+                int endIdx = aiResponse.lastIndexOf("```");
+                jsonContent = aiResponse.substring(startIdx, endIdx).trim();
+            } else if (aiResponse.contains("```")) {
+                int startIdx = aiResponse.indexOf("```") + 3;
+                int endIdx = aiResponse.lastIndexOf("```");
+                jsonContent = aiResponse.substring(startIdx, endIdx).trim();
+            }
+
+            return objectMapper.readValue(jsonContent, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            log.error("[JobRecommendationWorkflow] Failed to parse AI evaluation response: {}", e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 특정 공고에 대한 평가 결과 찾기
+     */
+    private JobEvaluationDto findEvaluationForJob(String jobId, List<JobEvaluationDto> evaluations) {
+        return evaluations.stream()
+                .filter(eval -> eval.jobId().equals(jobId))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * JobRecommendationResponse 빌드
+     */
+    private JobRecommendationResponse buildJobRecommendation(
+            SaraminJobListResponse.Jobs.Job job,
+            JobEvaluationDto evaluation) {
+
+        return JobRecommendationResponse.builder()
+                .jobId(job.id())
+                .title(job.position().title())
+                .companyName(job.company().detail().name())
+                .companyLogoUrl(job.company().detail().logoUrl())
+                .url(job.url())
+                .location(job.position().location() != null ?
+                        job.position().location().name() : null)
+                .experienceLevel(job.position().experienceLevel() != null ?
+                        job.position().experienceLevel().name() : null)
+                .educationLevel(job.position().requiredEducationLevel() != null ?
+                        job.position().requiredEducationLevel().name() : null)
+                .jobCode(job.position().jobCode() != null ?
+                        job.position().jobCode().code() : null)
+                .jobName(job.position().jobCode() != null ?
+                        job.position().jobCode().name() : null)
+                .salary(job.salary() != null ? job.salary().name() : null)
+                .expirationTimestamp(job.expirationTimestamp())
+                .recommendationReason(evaluation != null ?
+                        evaluation.recommendationReason() : "추천 이유를 생성할 수 없습니다.")
+                .matchScore(evaluation != null ?
+                        evaluation.matchScore() : 0)
+                .build();
+    }
+
+    /**
+     * Period를 사람이 읽기 쉬운 문자열로 변환
+     */
+    private String formatPeriod(Period period) {
+        if (period == null) {
+            return "";
+        }
+
+        String startStr = period.getStartDate() != null ?
+                period.getStartDate().toString() : "미정";
+        String endStr = period.getEndDate() != null ?
+                period.getEndDate().toString() : "재직중";
+
+        return startStr + " ~ " + endStr;
+    }
+
+    /**
+     * AI 평가 결과 DTO
+     */
     private record JobEvaluationDto(
             String jobId,
             Integer matchScore,
