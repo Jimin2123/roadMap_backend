@@ -289,9 +289,11 @@ public class DiagnosisService {
      * 새로운 진단을 생성하고 진단 ID를 반환합니다.
      * 이미 진행 중인 진단이 있으면 예외를 발생시킵니다.
      *
-     * TOCTOU 경쟁 조건 방지:
-     * - 비관적 락을 사용하여 동시 요청 시 데이터베이스 레벨에서 직렬화
-     * - 진단 생성 직후 즉시 IN_PROGRESS 상태로 전환하여 중복 생성 방지
+     * Race Condition 방지 전략:
+     * 1. 비관적 락으로 기존 진단 체크
+     * 2. 바로 IN_PROGRESS 상태로 생성 (PENDING 단계 스킵)
+     * 3. saveAndFlush로 즉시 DB 반영 및 트랜잭션 커밋
+     * 4. DB unique constraint (member_id + active status)로 이중 보호
      *
      * @param memberId 회원 ID
      * @return 생성된 진단 ID
@@ -326,23 +328,21 @@ public class DiagnosisService {
                 throw new DiagnosisAlreadyInProgressException(memberId);
             }
 
-            // 진단 생성 및 즉시 IN_PROGRESS 상태로 전환
-            log.debug("[DiagnosisService.createNewDiagnosis] Creating new diagnosis entity with PENDING status");
-            DiagnosisResult diagnosis = DiagnosisResult.createPending(memberId);
+            // 진단 생성 - PENDING 단계를 건너뛰고 바로 IN_PROGRESS로 생성
+            log.debug("[DiagnosisService.createNewDiagnosis] Creating new diagnosis with IN_PROGRESS status (skip PENDING)");
+            DiagnosisResult diagnosis = DiagnosisResult.builder()
+                    .memberId(memberId)
+                    .status(DiagnosisStatus.IN_PROGRESS)  // 바로 IN_PROGRESS 상태로 생성
+                    .resultData(null)
+                    .build();
 
-            log.debug("[DiagnosisService.createNewDiagnosis] Saving diagnosis entity to DB");
+            // saveAndFlush로 즉시 DB에 반영하여 race condition window 최소화
+            log.debug("[DiagnosisService.createNewDiagnosis] Saving diagnosis with flush to DB");
             long saveStartTime = System.currentTimeMillis();
-            DiagnosisResult saved = diagnosisResultRepository.save(diagnosis);
+            DiagnosisResult saved = diagnosisResultRepository.saveAndFlush(diagnosis);
             long saveDuration = System.currentTimeMillis() - saveStartTime;
-            log.debug("[DiagnosisService.createNewDiagnosis] Diagnosis saved in {}ms - diagnosisId: {}", saveDuration, saved.getId());
-
-            // 즉시 IN_PROGRESS로 전환하여 경쟁 조건 최소화
-            log.debug("[DiagnosisService.createNewDiagnosis] Transitioning diagnosis to IN_PROGRESS - diagnosisId: {}", saved.getId());
-            saved.startDiagnosis();
-            long transitionStartTime = System.currentTimeMillis();
-            diagnosisResultRepository.save(saved);
-            long transitionDuration = System.currentTimeMillis() - transitionStartTime;
-            log.debug("[DiagnosisService.createNewDiagnosis] Status transition saved in {}ms", transitionDuration);
+            log.debug("[DiagnosisService.createNewDiagnosis] Diagnosis saved and flushed in {}ms - diagnosisId: {}",
+                     saveDuration, saved.getId());
 
             long totalDuration = System.currentTimeMillis() - startTime;
             log.info("[DiagnosisService.createNewDiagnosis] EXIT - diagnosisId: {}, status: {}, totalDuration: {}ms",
@@ -355,6 +355,12 @@ public class DiagnosisService {
             log.warn("[DiagnosisService.createNewDiagnosis] EXCEPTION (AlreadyInProgress) - memberId: {}, duration: {}ms",
                 memberId, duration);
             throw e;
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // DB unique constraint 위반 - 동시 요청으로 중복 생성 시도
+            long duration = System.currentTimeMillis() - startTime;
+            log.warn("[DiagnosisService.createNewDiagnosis] DataIntegrityViolationException - concurrent creation detected for memberId: {}, duration: {}ms",
+                    memberId, duration, e);
+            throw new DiagnosisAlreadyInProgressException(memberId);
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             log.error("[DiagnosisService.createNewDiagnosis] EXCEPTION - memberId: {}, duration: {}ms, error: {}",
