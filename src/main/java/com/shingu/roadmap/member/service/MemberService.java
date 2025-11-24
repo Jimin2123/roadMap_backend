@@ -108,8 +108,15 @@ public class MemberService {
      * - 기존 이력서는 유지됩니다.
      * - 전화번호와 주소도 함께 업데이트합니다.
      */
-    public ProfileResponse updateProfileOnly(Long memberId, com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req) {
+    public ProfileResponse updateProfileOnly(Long memberId,
+            com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req) {
         Member member = findMember(memberId);
+
+        // Ensure we have the latest state of the member and its associations
+        // This helps prevent "Duplicate entry" errors if the profile was created in
+        // another transaction
+        // or if the persistence context is stale.
+        entityManager.refresh(member);
 
         // 전화번호 업데이트
         if (req.phoneNumber() != null) {
@@ -124,30 +131,36 @@ public class MemberService {
 
         // 기존 프로필 가져오기 또는 새로 생성
         Profile profile = member.getProfile();
-        Resume existingResume = null;
 
-        if (profile != null) {
-            // 기존 프로필이 있으면 기존 이력서 보존
-            existingResume = profile.getResume();
+        if (profile == null) {
+            // 프로필이 없으면 새로 생성
+            profile = Profile.builder()
+                    .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
+                    .profileImageUrl(req.profileImageUrl())
+                    .desiredJobs(new HashSet<>())
+                    .profileSkills(new HashSet<>())
+                    .desiredCapabilities(new HashSet<>())
+                    .userCapabilities(new HashSet<>())
+                    .build();
+            member.setProfile(profile);
+        } else {
+            // 기존 프로필이 있으면 업데이트 (도메인 메서드 사용)
+            profile.updateEducationLevel(req.educationLevel() != null ? req.educationLevel().name() : null);
+            profile.updateProfileImageUrl(req.profileImageUrl());
+
+            // 기존 스킬/희망직무 클리어
+            profile.getProfileSkills().clear();
+            profile.getDesiredJobs().clear();
+
+            // Flush to persist deletions before adding new entities
+            entityManager.flush();
         }
 
-        // 새 프로필 조립 (기존 이력서 유지)
-        Profile newProfile = Profile.builder()
-                .educationLevel(req.educationLevel() != null ? req.educationLevel().name() : null)
-                .profileImageUrl(req.profileImageUrl())
-                .desiredJobs(new HashSet<>())
-                .profileSkills(new HashSet<>())
-                .desiredCapabilities(new HashSet<>())
-                .userCapabilities(new HashSet<>())
-                .resume(existingResume)
-                .build();
-
         // 스킬/희망직무 보강
-        enrichWithSkillsForUpdate(req, newProfile);
-        enrichWithDesiredJobsForUpdate(req, newProfile);
+        enrichWithSkillsForUpdate(req, profile);
+        enrichWithDesiredJobsForUpdate(req, profile);
 
-        member.setProfile(newProfile);
-        return ProfileResponse.from(newProfile);
+        return ProfileResponse.from(profile);
     }
 
     public Member findMemberById(Long memberId) {
@@ -156,7 +169,7 @@ public class MemberService {
     }
 
     /* ====================================================================== */
-    /* Assemble Helpers                                                       */
+    /* Assemble Helpers */
     /* ====================================================================== */
 
     private Member assembleMember(MemberRequest request) {
@@ -181,7 +194,8 @@ public class MemberService {
     }
 
     private Address createAddress(AddressRequest req) {
-        if (req == null) return null;
+        if (req == null)
+            return null;
         return Address.builder()
                 .address(req.address())
                 .addressJibun(req.addressJibun())
@@ -204,7 +218,7 @@ public class MemberService {
     }
 
     /* ====================================================================== */
-    /* Profile Enrichers                                                      */
+    /* Profile Enrichers */
     /* ====================================================================== */
 
     private void enrichWithSkills(ProfileRequest req, Profile profile) {
@@ -213,7 +227,8 @@ public class MemberService {
         // Flush to persist deletions before adding new entities
         entityManager.flush();
 
-        if (req == null || CollectionUtils.isEmpty(req.skills())) return;
+        if (req == null || CollectionUtils.isEmpty(req.skills()))
+            return;
 
         for (var skillReq : req.skills()) {
             Skill skill = skillRepository.findByName(skillReq.name())
@@ -225,7 +240,8 @@ public class MemberService {
     }
 
     private void enrichWithDesiredJobs(ProfileRequest req, Profile profile) {
-        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
+        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes()))
+            return;
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()
                 .map(code -> saraminJobRepository.findById(code)
@@ -234,9 +250,15 @@ public class MemberService {
         profile.getDesiredJobs().addAll(jobs);
     }
 
-    private void enrichWithSkillsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req, Profile profile) {
+    private void enrichWithSkillsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req,
+            Profile profile) {
         profile.getProfileSkills().clear();
-        if (req == null || CollectionUtils.isEmpty(req.skills())) return;
+
+        // Flush to persist deletions before adding new entities
+        entityManager.flush();
+
+        if (req == null || CollectionUtils.isEmpty(req.skills()))
+            return;
 
         for (var skillReq : req.skills()) {
             Skill skill = skillRepository.findByName(skillReq.name())
@@ -247,8 +269,10 @@ public class MemberService {
         }
     }
 
-    private void enrichWithDesiredJobsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req, Profile profile) {
-        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes())) return;
+    private void enrichWithDesiredJobsForUpdate(com.shingu.roadmap.member.dto.request.ProfileUpdateRequest req,
+            Profile profile) {
+        if (req == null || CollectionUtils.isEmpty(req.desiredJobCodes()))
+            return;
 
         Set<SaraminJob> jobs = req.desiredJobCodes().stream()
                 .map(code -> saraminJobRepository.findById(code)
@@ -258,7 +282,7 @@ public class MemberService {
     }
 
     /* ====================================================================== */
-    /* NCS 추천                                                               */
+    /* NCS 추천 */
     /* ====================================================================== */
 
     private void recommendCapabilities(Profile profile) {
@@ -268,7 +292,8 @@ public class MemberService {
 
     private void recommendUserCapabilities(Profile profile) {
         Resume resume = profile.getResume();
-        if (profile.getProfileSkills().isEmpty() && (resume == null || resume.getCertificates().isEmpty())) return;
+        if (profile.getProfileSkills().isEmpty() && (resume == null || resume.getCertificates().isEmpty()))
+            return;
 
         Set<String> rec = openAiService.recommendNcsCodeUsingAssistant(profile)
                 .blockOptional().orElseGet(HashSet::new);
@@ -281,7 +306,8 @@ public class MemberService {
     }
 
     private void recommendDesiredCapabilities(Profile profile) {
-        if (profile.getDesiredJobs().isEmpty()) return;
+        if (profile.getDesiredJobs().isEmpty())
+            return;
 
         Set<String> names = profile.getDesiredJobs().stream()
                 .map(SaraminJob::getName)
@@ -298,7 +324,7 @@ public class MemberService {
     }
 
     /* ====================================================================== */
-    /* Utils                                                                  */
+    /* Utils */
     /* ====================================================================== */
 
     private Member findMember(Long id) {
