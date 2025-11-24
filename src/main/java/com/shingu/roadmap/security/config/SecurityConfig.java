@@ -79,6 +79,7 @@ public class SecurityConfig {
                             "/api/v1/diagnosis/*/stream", // SSE 스트림 (async dispatch 허용, 컨트롤러에서 인증 검증)
                             "/api-docs/**",
                             "/v3/api-docs/**",
+                            "/api/v1/images/**",
                             "/swagger-ui/**",
                             "/swagger-ui.html"
                     ).permitAll()
