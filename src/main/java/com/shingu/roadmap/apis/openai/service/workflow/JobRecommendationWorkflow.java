@@ -14,6 +14,7 @@ import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
 import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.member.domain.Profile;
+import com.shingu.roadmap.resume.domain.Career;
 import com.shingu.roadmap.resume.domain.Period;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +22,11 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -243,11 +248,30 @@ public class JobRecommendationWorkflow {
 
         log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
 
+        // 사용자의 총 경력 연수 계산
+        double userCareerYears = calculateTotalCareerYears(profile);
+        log.info("[JobRecommendationWorkflow] User career years: {}", userCareerYears);
+
+        // 경력 요구사항에 맞지 않는 채용공고 사전 필터링
+        List<SaraminJobListResponse.Jobs.Job> filteredJobs = jobs.stream()
+                .filter(job -> isJobSuitableForCareerLevel(job, userCareerYears))
+                .toList();
+
+        if (filteredJobs.size() < jobs.size()) {
+            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to career mismatch (remaining: {})",
+                    jobs.size() - filteredJobs.size(), filteredJobs.size());
+        }
+
+        if (filteredJobs.isEmpty()) {
+            log.warn("[JobRecommendationWorkflow] No jobs remaining after career filtering");
+            return Collections.emptyList();
+        }
+
         // 1. 사용자 프로필 컨텍스트 구성
         String userContext = buildUserContext(profile, ksaAnalysis);
 
-        // 2. 채용공고 정보 구성
-        String jobsContext = buildJobsContext(jobs);
+        // 2. 채용공고 정보 구성 (필터링된 공고만 사용)
+        String jobsContext = buildJobsContext(filteredJobs);
 
         // 3. OpenAI 프롬프트 생성
         String prompt = buildEvaluationPrompt(ncsOccupation, userContext, jobsContext);
@@ -263,8 +287,8 @@ public class JobRecommendationWorkflow {
             // 5. AI 응답 파싱 (JSON 형식 기대)
             List<JobEvaluationDto> evaluations = parseAiEvaluationResponse(aiResponse);
 
-            // 6. 평가 결과를 JobRecommendationResponse로 변환
-            return jobs.stream()
+            // 6. 평가 결과를 JobRecommendationResponse로 변환 (필터링된 공고만)
+            return filteredJobs.stream()
                     .map(job -> {
                         JobEvaluationDto evaluation = findEvaluationForJob(job.id(), evaluations);
                         return buildJobRecommendation(job, evaluation);
@@ -273,8 +297,8 @@ public class JobRecommendationWorkflow {
 
         } catch (Exception e) {
             log.error("[JobRecommendationWorkflow] Error during AI evaluation: {}", e.getMessage(), e);
-            // 폴백: AI 평가 실패 시 기본 변환
-            return jobs.stream()
+            // 폴백: AI 평가 실패 시 기본 변환 (필터링된 공고만)
+            return filteredJobs.stream()
                     .map(job -> buildJobRecommendation(job, null))
                     .collect(Collectors.toList());
         }
@@ -536,4 +560,114 @@ public class JobRecommendationWorkflow {
             Integer matchScore,
             String recommendationReason
     ) {}
+
+    /**
+     * 사용자의 총 경력 연수를 계산합니다.
+     *
+     * 계산 방식:
+     * 1. Resume에서 모든 Career 정보를 가져옴
+     * 2. 각 Career의 Period(시작일~종료일)를 기반으로 근무 기간 계산
+     * 3. 종료일이 없는 경우(재직중) 현재 날짜를 종료일로 사용
+     * 4. 모든 Career의 근무 기간을 합산하여 총 경력 연수 반환
+     *
+     * @param profile 사용자 프로필
+     * @return 총 경력 연수 (년 단위, 소수점)
+     */
+    private double calculateTotalCareerYears(Profile profile) {
+        if (profile.getResume() == null || profile.getResume().getCareers() == null
+                || profile.getResume().getCareers().isEmpty()) {
+            log.debug("[JobRecommendationWorkflow] No career information found");
+            return 0.0;
+        }
+
+        List<Career> careers = profile.getResume().getCareers();
+        double totalYears = 0.0;
+
+        for (Career career : careers) {
+            if (career.getPeriod() == null || career.getPeriod().getStartDate() == null) {
+                log.debug("[JobRecommendationWorkflow] Career period is null or has no start date, skipping");
+                continue;
+            }
+
+            LocalDate startDate = career.getPeriod().getStartDate();
+            LocalDate endDate = career.getPeriod().getEndDate();
+
+            // 재직중인 경우 현재 날짜를 종료일로 사용
+            if (endDate == null) {
+                endDate = LocalDate.now();
+                log.debug("[JobRecommendationWorkflow] Career is ongoing, using current date as end date");
+            }
+
+            // 근무 기간 계산 (일 단위 → 년 단위 변환)
+            long daysBetween = ChronoUnit.DAYS.between(startDate, endDate);
+            double years = daysBetween / 365.0;
+            totalYears += years;
+
+            log.debug("[JobRecommendationWorkflow] Career: {} ~ {} = {} years",
+                    startDate, endDate, String.format("%.2f", years));
+        }
+
+        log.info("[JobRecommendationWorkflow] Total career calculated: {} years", String.format("%.2f", totalYears));
+        return totalYears;
+    }
+
+    /**
+     * 채용공고가 사용자의 경력 수준에 적합한지 판단합니다.
+     *
+     * 판단 기준:
+     * 1. 채용공고의 experienceLevel 필드 분석
+     * 2. "신입", "경력무관": 모든 사용자에게 적합
+     * 3. "경력 X년↑", "경력 X~Y년": 사용자 경력이 요구사항을 충족하는 경우에만 적합
+     * 4. 경력 요구사항을 파싱할 수 없는 경우: 보수적으로 적합하다고 판단
+     *
+     * @param job 채용공고
+     * @param userCareerYears 사용자 총 경력 연수
+     * @return 적합 여부
+     */
+    private boolean isJobSuitableForCareerLevel(
+            SaraminJobListResponse.Jobs.Job job,
+            double userCareerYears) {
+
+        if (job.position() == null || job.position().experienceLevel() == null
+                || job.position().experienceLevel().name() == null) {
+            // 경력 정보가 없으면 보수적으로 적합하다고 판단
+            return true;
+        }
+
+        String experienceLevel = job.position().experienceLevel().name();
+        log.debug("[JobRecommendationWorkflow] Checking job {} - experience level: '{}'",
+                job.id(), experienceLevel);
+
+        // 1. 신입 또는 경력무관
+        if (experienceLevel.contains("신입") || experienceLevel.contains("경력무관")) {
+            return true;
+        }
+
+        // 2. "경력 X년↑" 패턴 (예: "경력 3년↑", "경력 5년 이상")
+        Pattern minYearsPattern = Pattern.compile("경력\\s*(\\d+)\\s*년\\s*[↑이상]");
+        Matcher minMatcher = minYearsPattern.matcher(experienceLevel);
+        if (minMatcher.find()) {
+            int requiredMinYears = Integer.parseInt(minMatcher.group(1));
+            boolean suitable = userCareerYears >= requiredMinYears;
+            log.debug("[JobRecommendationWorkflow] Min years required: {}, user has: {}, suitable: {}",
+                    requiredMinYears, String.format("%.2f", userCareerYears), suitable);
+            return suitable;
+        }
+
+        // 3. "경력 X~Y년" 패턴 (예: "경력 3~7년")
+        Pattern rangePattern = Pattern.compile("경력\\s*(\\d+)\\s*~\\s*(\\d+)\\s*년");
+        Matcher rangeMatcher = rangePattern.matcher(experienceLevel);
+        if (rangeMatcher.find()) {
+            int minYears = Integer.parseInt(rangeMatcher.group(1));
+            int maxYears = Integer.parseInt(rangeMatcher.group(2));
+            boolean suitable = userCareerYears >= minYears && userCareerYears <= maxYears;
+            log.debug("[JobRecommendationWorkflow] Required range: {}-{} years, user has: {}, suitable: {}",
+                    minYears, maxYears, String.format("%.2f", userCareerYears), suitable);
+            return suitable;
+        }
+
+        // 4. 파싱할 수 없는 경우 보수적으로 적합하다고 판단
+        log.debug("[JobRecommendationWorkflow] Could not parse experience level, allowing job");
+        return true;
+    }
 }
