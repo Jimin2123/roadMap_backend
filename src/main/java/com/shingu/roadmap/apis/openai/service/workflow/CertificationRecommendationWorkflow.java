@@ -166,14 +166,16 @@ public class CertificationRecommendationWorkflow {
     }
 
     /**
-     * 사용자 보유 자격증 추출
+     * 사용자 보유 자격증 추출 (유효한 자격증만)
      */
     private Set<String> extractOwnedCertifications(Profile profile) {
         if (profile.getResume() == null || profile.getResume().getCertificates() == null) {
             return Collections.emptySet();
         }
 
+        // 유효한 자격증만 필터링
         return profile.getResume().getCertificates().stream()
+                .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
                 .map(rc -> rc.getCertificate().getJmfldnm())
                 .collect(Collectors.toSet());
     }

@@ -73,7 +73,9 @@ public class NcsCodeRecommendationWorkflow {
         String skillsWithProficiency = profile.getProfileSkills().stream()
                 .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
                 .collect(Collectors.joining(", "));
+        // 유효한 자격증만 필터링
         String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+                .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
                 .map(rc -> rc.getCertificate().getJmfldnm())
                 .collect(Collectors.joining(", ")) : "";
 
@@ -194,7 +196,9 @@ public class NcsCodeRecommendationWorkflow {
         String skillsWithProficiency = profile.getProfileSkills().stream()
                 .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
                 .collect(Collectors.joining(", "));
+        // 유효한 자격증만 필터링
         String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+                .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
                 .map(rc -> rc.getCertificate().getJmfldnm())
                 .collect(Collectors.joining(", ")) : "";
 
@@ -335,7 +339,9 @@ public class NcsCodeRecommendationWorkflow {
         String skillsWithProficiency = profile.getProfileSkills().stream()
                 .map(ps -> String.format("%s (%s)", ps.getSkill().getName(), ps.getProficiency()))
                 .collect(Collectors.joining(", "));
+        // 유효한 자격증만 필터링
         String certificates = profile.getResume() != null ? profile.getResume().getCertificates().stream()
+                .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
                 .map(rc -> rc.getCertificate().getJmfldnm())
                 .collect(Collectors.joining(", ")) : "";
 

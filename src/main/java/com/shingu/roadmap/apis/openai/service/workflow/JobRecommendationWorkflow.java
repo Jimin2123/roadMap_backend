@@ -10,7 +10,10 @@ import com.shingu.roadmap.apis.openai.config.OpenAiCacheConfig;
 import com.shingu.roadmap.apis.openai.util.ResumeTextFormatter;
 import com.shingu.roadmap.apis.saramin.client.SaraminClient;
 import com.shingu.roadmap.apis.saramin.domain.SaraminJob;
+import com.shingu.roadmap.apis.saramin.domain.SaraminRegion;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
+import com.shingu.roadmap.apis.saramin.repository.SaraminRegionRepository;
+import com.shingu.roadmap.common.enums.EducationLevelType;
 import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
 import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.member.domain.Profile;
@@ -49,6 +52,7 @@ public class JobRecommendationWorkflow {
     private final ObjectMapper objectMapper;
     private final NcsApiService ncsApiService;
     private final ResumeTextFormatter resumeTextFormatter;
+    private final SaraminRegionRepository saraminRegionRepository;
 
     /**
      * 채용공고 추천 설정 상수
@@ -145,6 +149,10 @@ public class JobRecommendationWorkflow {
             log.info("[JobRecommendationWorkflow] Starting pagination - target: {} jobs, maxPages: {}",
                     TARGET_JOB_COUNT, MAX_PAGES);
 
+            // LazyInitializationException 방지: 지역 정보를 미리 추출 (JPA 세션 내에서)
+            final String userLocation = extractUserLocation(profile);
+            log.info("[JobRecommendationWorkflow] User location extracted: {}", userLocation != null ? userLocation : "not specified");
+
             // 검색 전략 결정 (사용자 희망 직무 우선)
             Set<Integer> desiredJobCodes = extractDesiredJobCodes(profile);
             Set<Integer> jobGroupCodes = desiredJobCodes.isEmpty() ? Set.of(2) : null; // IT 그룹 폴백
@@ -177,7 +185,7 @@ public class JobRecommendationWorkflow {
 
                     // OpenAI를 사용하여 각 공고 평가
                     List<JobRecommendationResponse> evaluatedJobs = evaluateJobsWithAI(
-                            profile, ncsOccupation, ksaAnalysis, jobs);
+                            profile, ncsOccupation, ksaAnalysis, jobs, userLocation);
 
                     // 매칭 점수 65점 이상만 필터링
                     List<JobRecommendationResponse> qualified = evaluatedJobs.stream()
@@ -229,6 +237,49 @@ public class JobRecommendationWorkflow {
     }
 
     /**
+     * 사용자의 희망 근무 지역을 추출합니다.
+     *
+     * LazyInitializationException 방지를 위해 JPA 세션 내에서 호출되어야 합니다.
+     * 이 메서드는 collectQualifiedJobsWithPagination() 시작 시점에 호출되어
+     * 지역 정보를 미리 추출하고 파라미터로 전달하는 방식으로 사용됩니다.
+     *
+     * @param profile 사용자 프로필
+     * @return 사용자 지역명 (예: "서울특별시", "경기도", null)
+     */
+    private String extractUserLocation(Profile profile) {
+        try {
+            if (profile.getMember() != null && profile.getMember().getAddress() != null) {
+                return profile.getMember().getAddress().getRegionCity();
+            }
+        } catch (Exception e) {
+            log.warn("[JobRecommendationWorkflow] Failed to extract user location: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * 사용자의 희망 최소 급여를 추출합니다.
+     *
+     * Resume → DesiredCompany → desiredSalary에서 가져옵니다.
+     * Profile.desiredMinSalary 필드는 중복이므로 제거되었습니다.
+     *
+     * @param profile 사용자 프로필
+     * @return 희망 최소 급여 (만원 단위, NULL이면 조건 없음)
+     */
+    private Integer extractDesiredMinSalary(Profile profile) {
+        try {
+            if (profile.getResume() != null && profile.getResume().getDesiredCompany() != null) {
+                int desiredSalary = profile.getResume().getDesiredCompany().getDesiredSalary();
+                // desiredSalary가 0이면 희망 급여 없음으로 간주
+                return desiredSalary > 0 ? desiredSalary : null;
+            }
+        } catch (Exception e) {
+            log.warn("[JobRecommendationWorkflow] Failed to extract desired salary: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * OpenAI를 사용하여 채용공고 목록을 평가합니다.
      *
      * AI가 수행하는 평가:
@@ -238,13 +289,15 @@ public class JobRecommendationWorkflow {
      * 4. 0-100점 매칭 점수 산출
      * 5. 맞춤형 추천 이유 생성
      *
+     * @param userLocation 사용자 희망 근무 지역 (미리 추출되어 전달됨, LazyInitializationException 방지)
      * @return 평가된 채용공고 리스트 (매칭 점수 및 추천 이유 포함)
      */
     private List<JobRecommendationResponse> evaluateJobsWithAI(
             Profile profile,
             NcsOccupation ncsOccupation,
             KsaAnalysisResponse ksaAnalysis,
-            List<SaraminJobListResponse.Jobs.Job> jobs) {
+            List<SaraminJobListResponse.Jobs.Job> jobs,
+            String userLocation) {
 
         log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
 
@@ -252,18 +305,57 @@ public class JobRecommendationWorkflow {
         double userCareerYears = calculateTotalCareerYears(profile);
         log.info("[JobRecommendationWorkflow] User career years: {}", userCareerYears);
 
-        // 경력 요구사항에 맞지 않는 채용공고 사전 필터링
-        List<SaraminJobListResponse.Jobs.Job> filteredJobs = jobs.stream()
+        // 사용자 학력 정보
+        String userEducationLevel = profile.getEducationLevel();
+        log.info("[JobRecommendationWorkflow] User education level: {}", userEducationLevel);
+
+        // 1차 필터링: 경력 요구사항 필터링
+        List<SaraminJobListResponse.Jobs.Job> careerFilteredJobs = jobs.stream()
                 .filter(job -> isJobSuitableForCareerLevel(job, userCareerYears))
                 .toList();
 
-        if (filteredJobs.size() < jobs.size()) {
-            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to career mismatch (remaining: {})",
-                    jobs.size() - filteredJobs.size(), filteredJobs.size());
+        int careerFiltered = jobs.size() - careerFilteredJobs.size();
+        if (careerFiltered > 0) {
+            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to career mismatch", careerFiltered);
         }
 
+        // 2차 필터링: 학력 요구사항 필터링
+        List<SaraminJobListResponse.Jobs.Job> educationFilteredJobs = careerFilteredJobs.stream()
+                .filter(job -> isJobSuitableForEducationLevel(job, userEducationLevel))
+                .toList();
+
+        int educationFiltered = careerFilteredJobs.size() - educationFilteredJobs.size();
+        if (educationFiltered > 0) {
+            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to education mismatch", educationFiltered);
+        }
+
+        // 3차 필터링: 지역 필터링
+        List<SaraminJobListResponse.Jobs.Job> locationFilteredJobs = educationFilteredJobs.stream()
+                .filter(job -> isJobSuitableForLocation(job, userLocation))
+                .toList();
+
+        int locationFiltered = educationFilteredJobs.size() - locationFilteredJobs.size();
+        if (locationFiltered > 0) {
+            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to location mismatch", locationFiltered);
+        }
+
+        // 4차 필터링: 급여 조건 필터링
+        Integer userDesiredMinSalary = extractDesiredMinSalary(profile);
+        List<SaraminJobListResponse.Jobs.Job> filteredJobs = locationFilteredJobs.stream()
+                .filter(job -> isJobSuitableForSalary(job, userDesiredMinSalary))
+                .toList();
+
+        int salaryFiltered = locationFilteredJobs.size() - filteredJobs.size();
+        if (salaryFiltered > 0) {
+            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to salary below expectation", salaryFiltered);
+        }
+
+        log.info("[JobRecommendationWorkflow] Total filtered: {} jobs (career: {}, education: {}, location: {}, salary: {}), remaining: {}",
+                careerFiltered + educationFiltered + locationFiltered + salaryFiltered,
+                careerFiltered, educationFiltered, locationFiltered, salaryFiltered, filteredJobs.size());
+
         if (filteredJobs.isEmpty()) {
-            log.warn("[JobRecommendationWorkflow] No jobs remaining after career filtering");
+            log.warn("[JobRecommendationWorkflow] No jobs remaining after filtering");
             return Collections.emptyList();
         }
 
@@ -360,13 +452,31 @@ public class JobRecommendationWorkflow {
             );
         }
 
-        // 자격증
+        // 자격증 (유효한 것만 포함)
         if (profile.getResume() != null && profile.getResume().getCertificates() != null
                 && !profile.getResume().getCertificates().isEmpty()) {
-            context.append("\n### 자격증\n");
-            profile.getResume().getCertificates().forEach(cert ->
-                context.append("- ").append(cert.getCertificate().getJmfldnm()).append("\n")
-            );
+
+            // 유효한 자격증만 필터링
+            var allCertificates = profile.getResume().getCertificates();
+            var validCertificates = allCertificates.stream()
+                    .filter(cert -> cert.getCertificate().isValidNow(cert.getAcquiredYear()))
+                    .toList();
+
+            // 필터링 로그
+            if (validCertificates.size() < allCertificates.size()) {
+                log.info("[JobRecommendationWorkflow] Filtered out {} expired certificates (valid: {}, total: {})",
+                        allCertificates.size() - validCertificates.size(),
+                        validCertificates.size(),
+                        allCertificates.size());
+            }
+
+            // 유효한 자격증만 컨텍스트에 추가
+            if (!validCertificates.isEmpty()) {
+                context.append("\n### 자격증\n");
+                validCertificates.forEach(cert ->
+                    context.append("- ").append(cert.getCertificate().getJmfldnm()).append("\n")
+                );
+            }
         }
 
         // KSA 분석 결과
@@ -568,7 +678,8 @@ public class JobRecommendationWorkflow {
      * 1. Resume에서 모든 Career 정보를 가져옴
      * 2. 각 Career의 Period(시작일~종료일)를 기반으로 근무 기간 계산
      * 3. 종료일이 없는 경우(재직중) 현재 날짜를 종료일로 사용
-     * 4. 모든 Career의 근무 기간을 합산하여 총 경력 연수 반환
+     * 4. **겹치는 경력 기간을 병합하여 중복 제거 (Merge Overlapping Intervals)**
+     * 5. 병합된 기간들의 총합을 계산하여 반환
      *
      * @param profile 사용자 프로필
      * @return 총 경력 연수 (년 단위, 소수점)
@@ -581,8 +692,9 @@ public class JobRecommendationWorkflow {
         }
 
         List<Career> careers = profile.getResume().getCareers();
-        double totalYears = 0.0;
 
+        // 1. 유효한 Career Period만 수집
+        List<Period> periods = new ArrayList<>();
         for (Career career : careers) {
             if (career.getPeriod() == null || career.getPeriod().getStartDate() == null) {
                 log.debug("[JobRecommendationWorkflow] Career period is null or has no start date, skipping");
@@ -598,17 +710,429 @@ public class JobRecommendationWorkflow {
                 log.debug("[JobRecommendationWorkflow] Career is ongoing, using current date as end date");
             }
 
-            // 근무 기간 계산 (일 단위 → 년 단위 변환)
-            long daysBetween = ChronoUnit.DAYS.between(startDate, endDate);
+            periods.add(Period.of(startDate, endDate));
+        }
+
+        if (periods.isEmpty()) {
+            log.debug("[JobRecommendationWorkflow] No valid career periods found");
+            return 0.0;
+        }
+
+        // 2. 겹치는 기간 병합
+        List<Period> mergedPeriods = mergeOverlappingPeriods(periods);
+
+        // 3. 병합된 기간들의 총 연수 계산
+        double totalYears = 0.0;
+        for (Period period : mergedPeriods) {
+            long daysBetween = ChronoUnit.DAYS.between(period.getStartDate(), period.getEndDate());
             double years = daysBetween / 365.0;
             totalYears += years;
 
-            log.debug("[JobRecommendationWorkflow] Career: {} ~ {} = {} years",
-                    startDate, endDate, String.format("%.2f", years));
+            log.debug("[JobRecommendationWorkflow] Merged period: {} ~ {} = {} years",
+                    period.getStartDate(), period.getEndDate(), String.format("%.2f", years));
         }
 
-        log.info("[JobRecommendationWorkflow] Total career calculated: {} years", String.format("%.2f", totalYears));
+        log.info("[JobRecommendationWorkflow] Total career calculated (after merging overlaps): {} years (from {} merged periods)",
+                String.format("%.2f", totalYears), mergedPeriods.size());
         return totalYears;
+    }
+
+    /**
+     * 겹치는 경력 기간을 병합합니다 (Merge Overlapping Intervals Algorithm).
+     *
+     * 알고리즘:
+     * 1. 시작일 기준으로 정렬
+     * 2. 현재 구간과 다음 구간이 겹치는지 확인
+     * 3. 겹치면 병합, 안 겹치면 현재 구간을 결과에 추가하고 다음으로 이동
+     *
+     * 예시:
+     * - Input: [(2020-01-01, 2022-12-31), (2021-06-01, 2023-06-30)]
+     * - Output: [(2020-01-01, 2023-06-30)]
+     *
+     * @param periods 경력 기간 리스트
+     * @return 병합된 경력 기간 리스트
+     */
+    private List<Period> mergeOverlappingPeriods(List<Period> periods) {
+        if (periods.size() <= 1) {
+            return new ArrayList<>(periods);
+        }
+
+        // 1. 시작일 기준 정렬
+        List<Period> sorted = new ArrayList<>(periods);
+        sorted.sort(Comparator.comparing(Period::getStartDate));
+
+        log.debug("[JobRecommendationWorkflow] Merging {} career periods", sorted.size());
+
+        // 2. 겹치는 구간 병합
+        List<Period> merged = new ArrayList<>();
+        Period current = sorted.get(0);
+
+        for (int i = 1; i < sorted.size(); i++) {
+            Period next = sorted.get(i);
+
+            // 겹치는지 확인: 현재 종료일 >= 다음 시작일
+            if (current.getEndDate().isAfter(next.getStartDate()) ||
+                    current.getEndDate().isEqual(next.getStartDate())) {
+                // 겹침: 병합 (종료일을 더 늦은 날짜로)
+                LocalDate mergedEndDate = current.getEndDate().isAfter(next.getEndDate())
+                        ? current.getEndDate()
+                        : next.getEndDate();
+                current = Period.of(current.getStartDate(), mergedEndDate);
+                log.debug("[JobRecommendationWorkflow] Merged overlapping periods: {} ~ {}",
+                        current.getStartDate(), current.getEndDate());
+            } else {
+                // 겹치지 않음: 현재 구간을 결과에 추가하고 다음으로 이동
+                merged.add(current);
+                current = next;
+            }
+        }
+
+        // 마지막 구간 추가
+        merged.add(current);
+
+        log.debug("[JobRecommendationWorkflow] Merged {} periods into {} non-overlapping periods",
+                sorted.size(), merged.size());
+
+        return merged;
+    }
+
+    /**
+     * 채용공고가 사용자의 희망 근무 지역에 적합한지 판단합니다.
+     *
+     * 개선된 판단 기준 (SaraminRegion 활용):
+     * 1. 사용자 지역 정보가 없으면: 모든 공고 허용 (보수적 접근)
+     * 2. 채용공고 지역 정보가 없으면: 보수적으로 허용
+     * 3. "원격근무", "재택근무", "전국", "해외": 항상 허용
+     * 4. SaraminRegion 데이터베이스를 활용한 정확한 지역 매칭
+     *    - 1차 지역 코드 (regionCode1) 기반 광역 단위 매칭
+     *    - 예: "서울특별시" → 101000 → 강남구(101010), 강동구(101020) 모두 매칭
+     *
+     * @param job 채용공고
+     * @param userLocation 사용자 지역 (예: "서울특별시", "경기도", "강남구", null)
+     * @return 적합 여부
+     */
+    private boolean isJobSuitableForLocation(
+            SaraminJobListResponse.Jobs.Job job,
+            String userLocation) {
+
+        // 1. 사용자 지역이 지정되지 않았으면 모든 공고 허용
+        if (userLocation == null || userLocation.isBlank()) {
+            log.debug("[JobRecommendationWorkflow] User location not specified, allowing all jobs");
+            return true;
+        }
+
+        if (job.position() == null || job.position().location() == null
+                || job.position().location().name() == null) {
+            // 2. 공고 지역 정보가 없으면 보수적으로 허용
+            log.debug("[JobRecommendationWorkflow] Job {} has no location info, allowing conservatively", job.id());
+            return true;
+        }
+
+        String jobLocationName = job.position().location().name();
+        log.debug("[JobRecommendationWorkflow] Checking job {} - job location: '{}', user location: '{}'",
+                job.id(), jobLocationName, userLocation);
+
+        // 3. 원격근무 / 재택근무 / 전국 / 해외는 항상 허용
+        if (jobLocationName.contains("원격") || jobLocationName.contains("재택") ||
+                jobLocationName.contains("전국") || jobLocationName.contains("해외")) {
+            log.debug("[JobRecommendationWorkflow] Job is remote/flexible location, allowing");
+            return true;
+        }
+
+        // 4. SaraminRegion 데이터베이스를 활용한 지역 매칭
+        try {
+            // 4-1. 사용자 지역으로 SaraminRegion 검색 (LIKE 검색)
+            List<SaraminRegion> userRegions = saraminRegionRepository.findByNameContainingIgnoreCase(
+                    normalizeLocationForSearch(userLocation)
+            );
+
+            if (userRegions.isEmpty()) {
+                // 사용자 지역을 DB에서 찾을 수 없으면 폴백: 기본 문자열 매칭
+                log.debug("[JobRecommendationWorkflow] User region '{}' not found in DB, using fallback string matching",
+                        userLocation);
+                return fallbackStringLocationMatching(jobLocationName, userLocation);
+            }
+
+            // 4-2. 채용공고 지역으로 SaraminRegion 검색
+            List<SaraminRegion> jobRegions = saraminRegionRepository.findByNameContainingIgnoreCase(
+                    normalizeLocationForSearch(jobLocationName)
+            );
+
+            if (jobRegions.isEmpty()) {
+                // 공고 지역을 DB에서 찾을 수 없으면 폴백: 기본 문자열 매칭
+                log.debug("[JobRecommendationWorkflow] Job location '{}' not found in DB, using fallback string matching",
+                        jobLocationName);
+                return fallbackStringLocationMatching(jobLocationName, userLocation);
+            }
+
+            // 4-3. 1차 지역 코드(regionCode1) 기반 광역 매칭
+            // 사용자 지역과 공고 지역의 1차 지역 코드가 하나라도 일치하면 매칭
+            Set<Integer> userRegionCodes1 = userRegions.stream()
+                    .map(SaraminRegion::getRegionCode1)
+                    .collect(Collectors.toSet());
+
+            Set<Integer> jobRegionCodes1 = jobRegions.stream()
+                    .map(SaraminRegion::getRegionCode1)
+                    .collect(Collectors.toSet());
+
+            boolean matches = userRegionCodes1.stream().anyMatch(jobRegionCodes1::contains);
+
+            log.debug("[JobRecommendationWorkflow] Region code matching - user codes: {}, job codes: {}, matches: {}",
+                    userRegionCodes1, jobRegionCodes1, matches);
+
+            return matches;
+
+        } catch (Exception e) {
+            // 예외 발생 시 보수적으로 허용하고 로그 기록
+            log.error("[JobRecommendationWorkflow] Error during region matching: {}, allowing conservatively",
+                    e.getMessage(), e);
+            return true;
+        }
+    }
+
+    /**
+     * 지역 검색을 위한 정규화
+     * DB 검색 시 불필요한 접미사 제거
+     *
+     * 예시:
+     * - "서울특별시" → "서울"
+     * - "경기도" → "경기"
+     * - "부산광역시" → "부산"
+     */
+    private String normalizeLocationForSearch(String location) {
+        if (location == null || location.isBlank()) {
+            return "";
+        }
+
+        return location.trim()
+                .replace("특별시", "")
+                .replace("광역시", "")
+                .replace("특별자치시", "")
+                .replace("특별자치도", "")
+                .replace("도", "")
+                .trim();
+    }
+
+    /**
+     * 폴백: 기본 문자열 매칭 (DB에서 지역을 찾을 수 없을 때)
+     *
+     * @param jobLocation 공고 지역명
+     * @param userLocation 사용자 지역명
+     * @return 매칭 여부
+     */
+    private boolean fallbackStringLocationMatching(String jobLocation, String userLocation) {
+        String normalizedUserLocation = normalizeLocationForSearch(userLocation);
+        String normalizedJobLocation = normalizeLocationForSearch(jobLocation);
+
+        boolean matches = normalizedJobLocation.contains(normalizedUserLocation) ||
+                normalizedUserLocation.contains(normalizedJobLocation);
+
+        log.debug("[JobRecommendationWorkflow] Fallback string matching - user: '{}', job: '{}', matches: {}",
+                normalizedUserLocation, normalizedJobLocation, matches);
+
+        return matches;
+    }
+
+    /**
+     * 채용공고가 사용자의 학력 수준에 적합한지 판단합니다.
+     *
+     * 판단 기준:
+     * 1. 채용공고의 requiredEducationLevel 필드 분석
+     * 2. "학력무관": 모든 사용자에게 적합
+     * 3. 사용자 학력이 요구사항보다 높거나 같으면 적합
+     * 4. 학력 정보가 없는 경우: 보수적으로 적합하다고 판단
+     *
+     * @param job 채용공고
+     * @param userEducationLevel 사용자 학력 (예: "대학교졸업(4년)")
+     * @return 적합 여부
+     */
+    private boolean isJobSuitableForEducationLevel(
+            SaraminJobListResponse.Jobs.Job job,
+            String userEducationLevel) {
+
+        if (job.position() == null || job.position().requiredEducationLevel() == null
+                || job.position().requiredEducationLevel().name() == null) {
+            // 학력 정보가 없으면 보수적으로 적합하다고 판단
+            return true;
+        }
+
+        String requiredEducation = job.position().requiredEducationLevel().name();
+        log.debug("[JobRecommendationWorkflow] Checking job {} - required education: '{}', user education: '{}'",
+                job.id(), requiredEducation, userEducationLevel);
+
+        // 1. 학력무관
+        if (requiredEducation.contains("학력무관")) {
+            return true;
+        }
+
+        // 2. 사용자 학력이 null인 경우 보수적으로 허용
+        if (userEducationLevel == null || userEducationLevel.isBlank()) {
+            log.debug("[JobRecommendationWorkflow] User education level is null/blank, allowing job conservatively");
+            return true;
+        }
+
+        // 3. 학력 레벨 비교
+        try {
+            int userLevel = getEducationLevelCode(userEducationLevel);
+            int requiredLevel = getEducationLevelCode(requiredEducation);
+
+            boolean suitable = userLevel >= requiredLevel;
+            log.debug("[JobRecommendationWorkflow] Education comparison - userLevel: {}, requiredLevel: {}, suitable: {}",
+                    userLevel, requiredLevel, suitable);
+            return suitable;
+
+        } catch (Exception e) {
+            // 파싱 실패 시 보수적으로 허용
+            log.debug("[JobRecommendationWorkflow] Could not parse education levels, allowing job conservatively - error: {}",
+                    e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * 학력 문자열을 학력 레벨 코드로 변환합니다.
+     *
+     * 학력 레벨 순서:
+     * 0 = 학력무관
+     * 1 = 고등학교졸업
+     * 2 = 대학졸업(2,3년) / 전문대졸
+     * 3 = 대학교졸업(4년) / 대졸
+     * 4 = 석사졸업
+     * 5 = 박사졸업
+     *
+     * @param educationText 학력 문자열
+     * @return 학력 레벨 코드 (0~5)
+     */
+    private int getEducationLevelCode(String educationText) {
+        if (educationText == null || educationText.isBlank()) {
+            return 0; // 학력무관으로 처리
+        }
+
+        String normalized = educationText.trim();
+
+        // 학력무관
+        if (normalized.contains("학력무관") || normalized.contains("무관")) {
+            return 0;
+        }
+
+        // 박사
+        if (normalized.contains("박사")) {
+            return 5;
+        }
+
+        // 석사
+        if (normalized.contains("석사")) {
+            return 4;
+        }
+
+        // 대학교졸업(4년) / 대졸 / 학사
+        if (normalized.contains("대학교졸업") || normalized.contains("4년") ||
+                normalized.contains("대졸") || normalized.contains("학사")) {
+            return 3;
+        }
+
+        // 대학졸업(2,3년) / 전문대 / 초대졸
+        if (normalized.contains("대학졸업") || normalized.contains("2,3년") || normalized.contains("2~3년") ||
+                normalized.contains("전문대") || normalized.contains("초대졸")) {
+            return 2;
+        }
+
+        // 고등학교졸업 / 고졸
+        if (normalized.contains("고등학교") || normalized.contains("고졸")) {
+            return 1;
+        }
+
+        // 파싱 실패: 기본값 0 (학력무관)으로 처리
+        log.debug("[JobRecommendationWorkflow] Unknown education level format: '{}', treating as NO_REQUIREMENT",
+                normalized);
+        return 0;
+    }
+
+    /**
+     * 채용공고가 사용자의 희망 최소 급여 조건에 적합한지 판단합니다.
+     *
+     * 판단 기준:
+     * 1. 사용자가 희망 최소 급여를 설정하지 않은 경우 → 모든 공고 허용
+     * 2. 채용공고의 급여 정보가 없는 경우 → 보수적으로 허용
+     * 3. 급여 정보가 있는 경우 → 공고의 최소 급여가 사용자 희망보다 높거나 같으면 허용
+     *
+     * @param job 채용공고
+     * @param userDesiredMinSalary 사용자 희망 최소 급여 (만원 단위, NULL이면 조건 없음)
+     * @return 급여 조건이 적합한 경우 true, 아니면 false
+     */
+    private boolean isJobSuitableForSalary(
+            SaraminJobListResponse.Jobs.Job job,
+            Integer userDesiredMinSalary) {
+
+        // 1. 사용자가 급여 조건을 설정하지 않은 경우 모든 공고 허용
+        if (userDesiredMinSalary == null) {
+            return true;
+        }
+
+        // 2. 채용공고에 급여 정보가 없는 경우 보수적으로 허용
+        if (job.salary() == null || job.salary().name() == null || job.salary().name().isBlank()) {
+            log.debug("[JobRecommendationWorkflow] Job {} has no salary info, allowing conservatively", job.id());
+            return true;
+        }
+
+        String salaryText = job.salary().name();
+
+        // 3. 특수 케이스: "회사내규에 따름", "면접 후 결정" 등 → 보수적으로 허용
+        if (salaryText.contains("회사내규") || salaryText.contains("면접") ||
+                salaryText.contains("추후") || salaryText.contains("협의")) {
+            log.debug("[JobRecommendationWorkflow] Job {} has negotiable salary, allowing conservatively", job.id());
+            return true;
+        }
+
+        // 4. 급여 파싱 및 비교
+        try {
+            Integer jobMinSalary = parseSalaryMin(salaryText);
+            if (jobMinSalary == null) {
+                // 파싱 실패 시 보수적으로 허용
+                log.debug("[JobRecommendationWorkflow] Could not parse salary '{}', allowing conservatively", salaryText);
+                return true;
+            }
+
+            boolean suitable = jobMinSalary >= userDesiredMinSalary;
+            log.debug("[JobRecommendationWorkflow] Salary comparison - job min: {} 만원, user desired: {} 만원, suitable: {}",
+                    jobMinSalary, userDesiredMinSalary, suitable);
+            return suitable;
+
+        } catch (Exception e) {
+            // 예외 발생 시 보수적으로 허용
+            log.debug("[JobRecommendationWorkflow] Error parsing salary '{}': {}, allowing conservatively",
+                    salaryText, e.getMessage());
+            return true;
+        }
+    }
+
+    /**
+     * 급여 문자열에서 최소 급여를 추출합니다.
+     *
+     * 예시:
+     * - "3000만원~4000만원" → 3000
+     * - "연봉 3500만원 이상" → 3500
+     * - "4000만원" → 4000
+     * - "3000만원 ~ 5000만원" → 3000
+     *
+     * @param salaryText 급여 문자열
+     * @return 최소 급여 (만원 단위), 파싱 실패 시 null
+     */
+    private Integer parseSalaryMin(String salaryText) {
+        if (salaryText == null || salaryText.isBlank()) {
+            return null;
+        }
+
+        // 숫자만 추출하는 정규식
+        Pattern pattern = Pattern.compile("(\\d{1,5})(?:만원|만|원)");
+        Matcher matcher = pattern.matcher(salaryText);
+
+        if (matcher.find()) {
+            String firstNumber = matcher.group(1);
+            return Integer.parseInt(firstNumber);
+        }
+
+        return null;
     }
 
     /**

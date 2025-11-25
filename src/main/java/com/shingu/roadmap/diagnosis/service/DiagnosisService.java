@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 진단 서비스 - 파이프라인 오케스트레이터
@@ -103,19 +106,10 @@ public class DiagnosisService {
                     .build();
             log.debug("[DiagnosisService.executeDiagnosisAsync] Context initialized successfully");
 
-            // 3. 파이프라인 프로세서 목록
-            List<DiagnosisProcessor> processors = List.of(
-                    ncsRecommendationProcessor,
-                    competencyAnalysisProcessor,
-                    jobRecommendationProcessor,
-                    certificationRecommendationProcessor,
-                    reportGenerationProcessor
-            );
-            log.info("[DiagnosisService.executeDiagnosisAsync] Starting pipeline with {} processors", processors.size());
-
-            // 4. 파이프라인 실행 (진행 상황 전송 포함)
+            // 3. 파이프라인 실행 (병렬화 적용) - Phase 3 A2
+            log.info("[DiagnosisService.executeDiagnosisAsync] Starting optimized pipeline with parallelization");
             long pipelineStartTime = System.currentTimeMillis();
-            context = executePipelineWithProgress(processors, context);
+            context = executePipelineWithParallelization(context);
             long pipelineDuration = System.currentTimeMillis() - pipelineStartTime;
             log.info("[DiagnosisService.executeDiagnosisAsync] Pipeline execution completed in {}ms - success: {}",
                 pipelineDuration, context.isSuccess());
@@ -257,6 +251,183 @@ public class DiagnosisService {
         long totalPipelineDuration = System.currentTimeMillis() - totalPipelineStartTime;
         log.info("[DiagnosisService.executePipelineWithProgress] EXIT - totalDuration: {}ms, processedCount: {}/{}, success: {}",
             totalPipelineDuration, processedCount, processors.size(), context.isSuccess());
+
+        return context;
+    }
+
+    /**
+     * 병렬화가 적용된 파이프라인 실행 (Phase 3 A2)
+     *
+     * 실행 순서:
+     * 1. NCS 추천 (순차)
+     * 2. 역량 분석 (순차)
+     * 3. 채용공고 추천 + 자격증 추천 (병렬)
+     * 4. 보고서 생성 (순차)
+     *
+     * @param context 진단 컨텍스트
+     * @return 처리된 진단 컨텍스트
+     */
+    private DiagnosisContext executePipelineWithParallelization(DiagnosisContext context) {
+        log.info("[DiagnosisService.executePipelineWithParallelization] ENTER - diagnosisId: {}", context.getDiagnosisId());
+        long totalPipelineStartTime = System.currentTimeMillis();
+
+        try {
+            // Phase 1: NCS 추천 (순차)
+            context = executeSingleProcessor(ncsRecommendationProcessor, context, 1, 5);
+            if (!context.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] NCS recommendation failed, stopping pipeline");
+                return context;
+            }
+
+            // Phase 2: 역량 분석 (순차)
+            context = executeSingleProcessor(competencyAnalysisProcessor, context, 2, 5);
+            if (!context.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] Competency analysis failed, stopping pipeline");
+                return context;
+            }
+
+            // Phase 3: 채용공고 추천 + 자격증 추천 (병렬)
+            log.info("[DiagnosisService.executePipelineWithParallelization] Starting parallel execution - Job & Certification recommendations");
+            long parallelStartTime = System.currentTimeMillis();
+
+            // Lambda에서 사용할 final 변수
+            final DiagnosisContext finalContext = context;
+
+            // 병렬 실행을 위한 CompletableFuture 생성
+            CompletableFuture<DiagnosisContext> jobFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Starting job recommendation");
+                    long jobStartTime = System.currentTimeMillis();
+
+                    // 진행 상황 전송
+                    sendProgress(finalContext.getDiagnosisId(), DiagnosisStep.JOB_MATCHING, 60,
+                            DiagnosisStatus.IN_PROGRESS, "채용공고 추천 중...");
+
+                    DiagnosisContext jobContext = jobRecommendationProcessor.process(finalContext);
+                    long jobDuration = System.currentTimeMillis() - jobStartTime;
+
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Completed in {}ms - success: {}",
+                            jobDuration, jobContext.isSuccess());
+                    return jobContext;
+                } catch (Exception e) {
+                    log.error("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Exception: {}", e.getMessage(), e);
+                    DiagnosisContext errorContext = finalContext.toBuilder()
+                            .success(false)
+                            .errorMessage("채용공고 추천 중 오류 발생: " + e.getMessage())
+                            .build();
+                    return errorContext;
+                }
+            });
+
+            CompletableFuture<DiagnosisContext> certFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Starting certification recommendation");
+                    long certStartTime = System.currentTimeMillis();
+
+                    // 진행 상황 전송
+                    sendProgress(finalContext.getDiagnosisId(), DiagnosisStep.JOB_MATCHING, 75,
+                            DiagnosisStatus.IN_PROGRESS, "자격증 추천 중...");
+
+                    DiagnosisContext certContext = certificationRecommendationProcessor.process(finalContext);
+                    long certDuration = System.currentTimeMillis() - certStartTime;
+
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Completed in {}ms - success: {}",
+                            certDuration, certContext.isSuccess());
+                    return certContext;
+                } catch (Exception e) {
+                    log.error("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Exception: {}", e.getMessage(), e);
+                    DiagnosisContext errorContext = finalContext.toBuilder()
+                            .success(false)
+                            .errorMessage("자격증 추천 중 오류 발생: " + e.getMessage())
+                            .build();
+                    return errorContext;
+                }
+            });
+
+            // 두 작업이 모두 완료될 때까지 대기
+            CompletableFuture.allOf(jobFuture, certFuture).join();
+
+            // 결과 병합
+            DiagnosisContext jobResult = jobFuture.join();
+            DiagnosisContext certResult = certFuture.join();
+            long parallelDuration = System.currentTimeMillis() - parallelStartTime;
+
+            log.info("[DiagnosisService.executePipelineWithParallelization] Parallel execution completed in {}ms - jobSuccess: {}, certSuccess: {}",
+                    parallelDuration, jobResult.isSuccess(), certResult.isSuccess());
+
+            // 두 결과를 컨텍스트에 병합 (둘 중 하나라도 실패하면 실패로 처리)
+            if (!jobResult.isSuccess() || !certResult.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] One or both parallel processors failed");
+                context = context.toBuilder()
+                        .success(false)
+                        .errorMessage("채용공고 또는 자격증 추천 중 오류 발생")
+                        .build();
+                return context;
+            }
+
+            // 두 결과 모두 성공 - context에 결과 병합
+            context = jobResult; // jobResult가 최신 context
+            // certResult의 자격증 추천 결과를 context에 추가
+            if (certResult.getCertificationRecommendations() != null) {
+                context = context.toBuilder()
+                        .certificationRecommendations(certResult.getCertificationRecommendations())
+                        .build();
+            }
+
+            // Phase 4: 보고서 생성 (순차)
+            context = executeSingleProcessor(reportGenerationProcessor, context, 4, 5);
+
+            long totalDuration = System.currentTimeMillis() - totalPipelineStartTime;
+            log.info("[DiagnosisService.executePipelineWithParallelization] EXIT - totalDuration: {}ms, success: {}, parallelSpeedup: {}ms",
+                    totalDuration, context.isSuccess(), parallelDuration);
+
+        } catch (Exception e) {
+            log.error("[DiagnosisService.executePipelineWithParallelization] EXCEPTION: {}", e.getMessage(), e);
+            context = context.toBuilder()
+                    .success(false)
+                    .errorMessage("파이프라인 실행 중 예외 발생: " + e.getMessage())
+                    .build();
+        }
+
+        return context;
+    }
+
+    /**
+     * 단일 프로세서 실행 헬퍼 메서드
+     */
+    private DiagnosisContext executeSingleProcessor(DiagnosisProcessor processor, DiagnosisContext context,
+                                                      int step, int totalSteps) {
+        String processorName = processor.getName();
+        log.info("[DiagnosisService.executeSingleProcessor] Executing {}/{} - {}", step, totalSteps, processorName);
+        long startTime = System.currentTimeMillis();
+
+        // 진행 상황 전송
+        ProcessorProgress progress = PROCESSOR_PROGRESS_MAP.get(processorName);
+        if (progress != null) {
+            sendProgress(context.getDiagnosisId(), progress.step(), progress.percentage(),
+                    DiagnosisStatus.IN_PROGRESS, progress.message());
+        }
+
+        try {
+            context = processor.process(context);
+            long duration = System.currentTimeMillis() - startTime;
+
+            if (context.isSuccess()) {
+                log.info("[DiagnosisService.executeSingleProcessor] Completed successfully - {}, duration: {}ms",
+                        processorName, duration);
+            } else {
+                log.error("[DiagnosisService.executeSingleProcessor] Failed - {}, duration: {}ms, error: {}",
+                        processorName, duration, context.getErrorMessage());
+            }
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("[DiagnosisService.executeSingleProcessor] Exception - {}, duration: {}ms, error: {}",
+                    processorName, duration, e.getMessage(), e);
+            context = context.toBuilder()
+                    .success(false)
+                    .errorMessage("프로세서 실행 중 오류: " + processorName)
+                    .build();
+        }
 
         return context;
     }

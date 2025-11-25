@@ -278,8 +278,9 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] AI evaluation completed in {}ms - aiScore: {}, matchLevel: {}",
                 aiEvalDuration, Objects.requireNonNull(aiEvaluation).confidenceScore(), aiEvaluation.matchLevel());
 
-            // 최종 신뢰도: AI 평가(70%) + 규칙 기반(30%) 가중 평균
-            double finalConfidence = (aiEvaluation.confidenceScore() * 0.7) + (ruleBasedConfidence * 0.3);
+            // 최종 신뢰도: AI 평가(60%) + 규칙 기반(40%) 가중 평균
+            // Phase 2 P3: 하이브리드 접근으로 규칙 기반 비중 증가 (정확도 향상)
+            double finalConfidence = (aiEvaluation.confidenceScore() * 0.6) + (ruleBasedConfidence * 0.4);
             log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] Final confidence calculated - ncsCode: {}, AI: {}, Rule: {}, Final: {}",
                     ncsCode, aiEvaluation.confidenceScore(), ruleBasedConfidence, finalConfidence);
 
