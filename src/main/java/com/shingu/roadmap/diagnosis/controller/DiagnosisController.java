@@ -2,7 +2,6 @@ package com.shingu.roadmap.diagnosis.controller;
 
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
-import com.shingu.roadmap.diagnosis.dto.request.DiagnosisStartRequest;
 import com.shingu.roadmap.diagnosis.dto.request.JobConfirmationRequest;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
@@ -38,11 +37,10 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     @Override
     @PostMapping("/api/v1/diagnosis")
     public ResponseEntity<DiagnosisProgressResponse> runDiagnosis(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestBody(required = false) DiagnosisStartRequest request
+            @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        log.debug("[DiagnosisController.runDiagnosis] ENTER - userDetails: {}, request: {}",
-            userDetails != null ? userDetails.getUsername() : "null", request);
+        log.debug("[DiagnosisController.runDiagnosis] ENTER - userDetails: {}",
+            userDetails != null ? userDetails.getUsername() : "null");
 
         long startTime = System.currentTimeMillis();
 

@@ -231,64 +231,75 @@ public class CertificationRecommendationWorkflow {
         // 사용자 보유 자격증 목록
         String ownedCertsText = ownedCertificates.isEmpty() ? "없음" : String.join(", ", ownedCertificates);
 
-        // AI 프롬프트 생성
-        String prompt = String.format("""
-                당신은 한국 IT 업계의 자격증 추천 전문가입니다.
-                사용자의 목표 직무, 현재 역량, 역량 부족 부분을 분석하여 적합한 자격증을 추천하세요.
+        // AI 메시지 생성 (Chat Completion 방식)
+        List<Map<String, String>> messages = List.of(
+                Map.of(
+                        "role", "system",
+                        "content", """
+                                당신은 한국 IT 업계의 자격증 추천 전문가입니다.
+                                사용자의 목표 직무, 현재 역량, 역량 부족 부분을 분석하여 적합한 자격증을 추천합니다.
 
-                [목표 NCS 직무]
-                - 코드: %s
-                - 직무명: %s
-                - 설명: %s
+                                [추천 기준]
+                                1. NCS 직무와 직접 관련된 자격증만 추천
+                                2. KSA gap이 큰 영역을 보완할 수 있는 자격증 우선
+                                3. 사용자가 이미 보유한 자격증은 제외
+                                4. 실제 존재하는 한국 공인 자격증만 추천 (정보처리기사, SQLD, AWS Certified 등)
+                                5. 난이도와 준비 기간을 현실적으로 평가
 
-                [사용자 현재 역량 분석 (KSA Gap Analysis)]
-                평균 Gap: %.2f (0.0=완벽, 1.0=부족)
-                %s
+                                [한국 IT 자격증 예시]
+                                - 국가기술자격: 정보처리기사, 정보처리산업기사, 정보보안기사, 정보통신기사, 빅데이터분석기사
+                                - 민간자격: SQLD, SQLP, 리눅스마스터, 네트워크관리사, 정보기술자격(ITQ)
+                                - 국제자격: AWS Certified Developer, CKAD, CISSP, CompTIA
 
-                [사용자 보유 자격증]
-                %s
+                                [출력 형식]
+                                반드시 아래 JSON 배열 형식으로만 응답해주세요. 설명이나 다른 텍스트는 포함하지 마세요.
+                                최대 5개까지 추천하며, 우선순위가 높은 순서대로 배열하세요.
 
-                [추천 기준]
-                1. NCS 직무와 직접 관련된 자격증만 추천
-                2. KSA gap이 큰 영역을 보완할 수 있는 자격증 우선
-                3. 사용자가 이미 보유한 자격증은 제외
-                4. 실제 존재하는 한국 공인 자격증만 추천 (정보처리기사, SQLD, AWS Certified 등)
-                5. 난이도와 준비 기간을 현실적으로 평가
+                                [
+                                  {
+                                    "certificationName": "자격증명",
+                                    "issuingOrganization": "발급기관",
+                                    "category": "카테고리 (정보기술/데이터베이스/클라우드/보안/네트워크/빅데이터)",
+                                    "difficultyLevel": 난이도(1~5),
+                                    "priority": 우선순위(1~5, 1이 가장 높음),
+                                    "reason": "추천 이유 (1~2문장, KSA gap과 연결하여 설명)",
+                                    "gapResolutionContribution": gap해소기여도(0~100),
+                                    "estimatedPreparationMonths": 준비기간(개월)
+                                  }
+                                ]
+                                """
+                ),
+                Map.of(
+                        "role", "user",
+                        "content", String.format("""
+                                [목표 NCS 직무]
+                                - 코드: %s
+                                - 직무명: %s
+                                - 설명: %s
 
-                [한국 IT 자격증 예시]
-                - 국가기술자격: 정보처리기사, 정보처리산업기사, 정보보안기사, 정보통신기사, 빅데이터분석기사
-                - 민간자격: SQLD, SQLP, 리눅스마스터, 네트워크관리사, 정보기술자격(ITQ)
-                - 국제자격: AWS Certified Developer, CKAD, CISSP, CompTIA
+                                [사용자 현재 역량 분석 (KSA Gap Analysis)]
+                                평균 Gap: %.2f (0.0=완벽, 1.0=부족)
+                                %s
 
-                [출력 형식]
-                반드시 아래 JSON 배열 형식으로만 응답해주세요. 설명이나 다른 텍스트는 포함하지 마세요.
-                최대 5개까지 추천하며, 우선순위가 높은 순서대로 배열하세요.
+                                [사용자 보유 자격증]
+                                %s
 
-                [
-                  {
-                    "certificationName": "자격증명",
-                    "issuingOrganization": "발급기관",
-                    "category": "카테고리 (정보기술/데이터베이스/클라우드/보안/네트워크/빅데이터)",
-                    "difficultyLevel": 난이도(1~5),
-                    "priority": 우선순위(1~5, 1이 가장 높음),
-                    "reason": "추천 이유 (1~2문장, KSA gap과 연결하여 설명)",
-                    "gapResolutionContribution": gap해소기여도(0~100),
-                    "estimatedPreparationMonths": 준비기간(개월)
-                  }
-                ]
-                """,
-                ncsOccupation.getDutyCd(),
-                ncsOccupation.getDutyNm(),
-                ncsOccupation.getDutyDef() != null ? ncsOccupation.getDutyDef() : "설명 없음",
-                avgGap,
-                ksaGapSummary,
-                ownedCertsText
+                                위 정보를 바탕으로 적합한 자격증을 추천해주세요.
+                                """,
+                                ncsOccupation.getDutyCd(),
+                                ncsOccupation.getDutyNm(),
+                                ncsOccupation.getDutyDef() != null ? ncsOccupation.getDutyDef() : "설명 없음",
+                                avgGap,
+                                ksaGapSummary,
+                                ownedCertsText
+                        )
+                )
         );
 
-        log.debug("[CertificationRecommendationWorkflow] AI prompt prepared, calling OpenAI");
+        log.debug("[CertificationRecommendationWorkflow] AI messages prepared, calling OpenAI");
 
-        // OpenAI API 호출 (Assistant 방식)
-        return openAiClient.generateAssistantResponse(prompt)
+        // OpenAI API 호출 (Chat Completion 방식)
+        return openAiClient.generateChatCompletion(messages)
                 .flatMap(aiResponse -> {
                     log.info("[CertificationRecommendationWorkflow] Received AI response, parsing JSON");
                     return parseAiCertificationResponse(aiResponse, ncsOccupation.getDutyCd());

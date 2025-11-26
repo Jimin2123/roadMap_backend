@@ -445,46 +445,6 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
         };
     }
 
-    /**
-     * 추천 근거 목록 생성
-     */
-    private List<Evidence> generateEvidenceList(Profile profile, List<String> compUnitNames) {
-        List<Evidence> evidences = new ArrayList<>();
-
-        // 스킬 기반 근거
-        profile.getProfileSkills().stream()
-                .limit(3)
-                .forEach(ps -> evidences.add(Evidence.builder()
-                        .sourceType(EvidenceSourceType.SKILL)
-                        .sourceDetail("보유 기술")
-                        .content(ps.getSkill().getName() + " (" + ps.getProficiency() + ")")
-                        .reasoning("핵심 기술 보유")
-                        .build()));
-
-        // 프로젝트 기반 근거
-        if (profile.getResume() != null && profile.getResume().getProjects() != null) {
-            profile.getResume().getProjects().stream()
-                    .limit(2)
-                    .forEach(project -> evidences.add(Evidence.builder()
-                            .sourceType(EvidenceSourceType.PROJECT)
-                            .sourceDetail("프로젝트 경험")
-                            .content(project.getName() + " - " + project.getRole())
-                            .reasoning("실무 경험 보유")
-                            .build()));
-        }
-
-        return evidences;
-    }
-
-    /**
-     * 추천 이유 생성
-     */
-    private String generateRecommendationReason(String dutyName, List<String> compUnitNames, Profile profile) {
-        return String.format("%s 직무는 귀하의 기술 스택 및 프로젝트 경험과 높은 연관성을 보입니다. " +
-                        "특히 %s 등의 능력단위에서 강점을 보유하고 있습니다.",
-                dutyName,
-                compUnitNames.stream().limit(2).collect(Collectors.joining(", ")));
-    }
 
     /**
      * 전체 신뢰도 계산

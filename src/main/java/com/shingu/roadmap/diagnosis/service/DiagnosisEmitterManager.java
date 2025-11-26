@@ -269,15 +269,6 @@ public class DiagnosisEmitterManager {
         }
     }
 
-    /**
-     * 특정 진단 ID의 emitter가 존재하는지 확인합니다.
-     *
-     * @param diagnosisId 진단 ID
-     * @return emitter 존재 여부
-     */
-    public boolean hasEmitter(Long diagnosisId) {
-        return emitters.getIfPresent(diagnosisId) != null;
-    }
 
     /**
      * Caffeine Cache가 자동으로 TTL 기반 cleanup을 수행합니다.

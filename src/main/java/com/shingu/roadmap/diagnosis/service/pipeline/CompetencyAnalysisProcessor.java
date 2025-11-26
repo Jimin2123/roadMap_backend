@@ -391,47 +391,6 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                 .build();
     }
 
-    /**
-     * [DEPRECATED] KSA 카테고리별 항목 분석 - 기본 방식 (fallback용으로만 사용)
-     */
-    @Deprecated
-    private List<KsaAnalysisResponse.KsaItem> analyzeKsaCategory(
-            List<NcsKsaResponse.NcsKsaItem> ksaItems,
-            Profile profile
-    ) {
-        return ksaItems.stream()
-                .map(item -> {
-                    // 사용자 보유 수준 계산
-                    double userScore = calculateUserScore(item.gbnName(), profile);
-
-                    // 목표 수준 (NCS 표준)
-                    double targetScore = 0.8; // 기본 목표 수준
-
-                    // 점수 갭
-                    double scoreGap = targetScore - userScore;
-
-                    // 수준 평가
-                    String levelAssessment = assessLevel(scoreGap);
-
-                    // 갭 설명
-                    String gapDescription = generateGapDescription(item.gbnName(), scoreGap);
-
-                    // 추천 사항
-                    String recommendation = generateRecommendation(item.gbnName(), scoreGap);
-
-                    return KsaAnalysisResponse.KsaItem.builder()
-                            .itemName(item.gbnName())
-                            .itemDescription(item.gbnVal())
-                            .userScore(userScore)
-                            .targetScore(targetScore)
-                            .scoreGap(scoreGap)
-                            .levelAssessment(levelAssessment)
-                            .gapDescription(gapDescription)
-                            .recommendation(recommendation)
-                            .build();
-                })
-                .collect(Collectors.toList());
-    }
 
     /**
      * 사용자 보유 수준 점수 계산
