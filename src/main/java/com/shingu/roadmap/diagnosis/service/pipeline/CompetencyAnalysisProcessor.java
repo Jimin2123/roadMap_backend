@@ -299,7 +299,8 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
             // AI 분석 호출
             Map<String, NcsCompetencyAnalysisWorkflow.KsaEvaluationResult> aiResults;
             try {
-                aiResults = openAiService.analyzeKsaCompetency(ncsCode, itemNames, profile).block();
+                aiResults = openAiService.analyzeKsaCompetency(ncsCode, itemNames, profile)
+                        .block(java.time.Duration.ofSeconds(60)); // Timeout to prevent infinite waiting
             } catch (Exception e) {
                 log.error("[CompetencyAnalysisProcessor] AI service error during KSA analysis for category {}: {}",
                         categoryName, e.getMessage(), e);
@@ -621,7 +622,8 @@ public class CompetencyAnalysisProcessor implements DiagnosisProcessor {
                     LocalDate end = project.getPeriod().getEndDate() != null
                             ? project.getPeriod().getEndDate()
                             : LocalDate.now();
-                    return Period.between(start, end).getYears() * 12 + Period.between(start, end).getMonths();
+                    // Fixed: Use ChronoUnit.MONTHS for efficient and accurate calculation
+                    return (int) java.time.temporal.ChronoUnit.MONTHS.between(start, end);
                 })
                 .sum();
     }

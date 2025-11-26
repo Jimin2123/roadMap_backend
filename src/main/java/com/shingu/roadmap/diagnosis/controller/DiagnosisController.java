@@ -51,16 +51,11 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             log.info("[DiagnosisController.runDiagnosis] Starting diagnosis for memberId: {}", memberId);
             log.debug("[DiagnosisController.runDiagnosis] User authentication validated - memberId: {}", memberId);
 
-            // 새 진단 생성 및 ID 발급
+            // 새 진단 생성 및 ID 발급 (이미 IN_PROGRESS 상태로 생성됨)
             log.debug("[DiagnosisController.runDiagnosis] Creating new diagnosis for memberId: {}", memberId);
             Long diagnosisId = diagnosisService.createNewDiagnosis(memberId);
-            log.info("[DiagnosisController.runDiagnosis] New diagnosisId created: {} for memberId: {}",
+            log.info("[DiagnosisController.runDiagnosis] New diagnosisId created: {} for memberId: {} (status: IN_PROGRESS)",
                 diagnosisId, memberId);
-
-            // 진단 상태를 IN_PROGRESS로 변경
-            log.debug("[DiagnosisController.runDiagnosis] Updating diagnosis status to IN_PROGRESS for diagnosisId: {}",
-                diagnosisId);
-            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
 
             // 비동기로 진단 실행
             log.info("[DiagnosisController.runDiagnosis] Triggering async diagnosis execution - diagnosisId: {}, memberId: {}",
@@ -215,12 +210,7 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             diagnosisService.verifyDiagnosisOwnershipById(diagnosisId, memberId);
             log.debug("[DiagnosisController.selectJobManually] Ownership verified successfully");
 
-            // 진단 상태를 AWAITING_USER_INPUT에서 IN_PROGRESS로 변경
-            log.debug("[DiagnosisController.selectJobManually] Updating diagnosis status - diagnosisId: {}, from: AWAITING_USER_INPUT, to: IN_PROGRESS",
-                diagnosisId);
-            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
-
-            // 비동기로 진단 재개 (SSE로 진행 상황 전송)
+            // 비동기로 진단 재개 (continueWithUserSelectionAsync()가 상태를 IN_PROGRESS로 변경함)
             log.info("[DiagnosisController.selectJobManually] Triggering async diagnosis continuation - diagnosisId: {}, selectedNcsCode: {}",
                 diagnosisId, request.selectedNcsCode());
             diagnosisService.continueWithUserSelectionAsync(diagnosisId, request.selectedNcsCode());

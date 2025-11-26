@@ -107,50 +107,75 @@ public class DiagnosisStateService {
             throw new ProfileNotFoundException(memberId);
         }
 
-        // Batch fetching을 트리거하기 위해 컬렉션 접근 (실제 데이터 사용은 하지 않음)
-        // Hibernate의 default_batch_fetch_size 설정으로 효율적으로 로딩됨
-        if (profile.getProfileSkills() != null) {
-            profile.getProfileSkills().size();
-        }
-        if (profile.getDesiredJobs() != null) {
-            profile.getDesiredJobs().size();
-        }
-        if (profile.getDesiredCapabilities() != null) {
-            profile.getDesiredCapabilities().size();
-        }
-        if (profile.getUserCapabilities() != null) {
-            profile.getUserCapabilities().size();
+        // CRITICAL: Explicitly initialize lazy-loaded entities to prevent LazyInitializationException
+        // Using Hibernate.initialize() is safer and more explicit than calling .size()
+
+        // Initialize Member.address (used in JobRecommendationWorkflow)
+        if (member.getAddress() != null) {
+            org.hibernate.Hibernate.initialize(member.getAddress());
+            log.debug("[DiagnosisStateService.loadDiagnosisDataDetached] Initialized Member.address");
         }
 
-        // Resume 컬렉션들도 batch fetching으로 로딩
+        // Initialize Profile collections using Hibernate.initialize()
+        if (profile.getProfileSkills() != null) {
+            org.hibernate.Hibernate.initialize(profile.getProfileSkills());
+        }
+        if (profile.getDesiredJobs() != null) {
+            org.hibernate.Hibernate.initialize(profile.getDesiredJobs());
+        }
+        if (profile.getDesiredCapabilities() != null) {
+            org.hibernate.Hibernate.initialize(profile.getDesiredCapabilities());
+        }
+        if (profile.getUserCapabilities() != null) {
+            org.hibernate.Hibernate.initialize(profile.getUserCapabilities());
+        }
+
+        // Initialize Resume collections using Hibernate.initialize()
         Resume resume = profile.getResume();
         if (resume != null) {
+            // Initialize Resume entity itself (if it's a proxy)
+            org.hibernate.Hibernate.initialize(resume);
+
+            // Initialize DesiredCompany (used for salary information)
+            if (resume.getDesiredCompany() != null) {
+                org.hibernate.Hibernate.initialize(resume.getDesiredCompany());
+            }
+
+            // Initialize Introduction (contains career keywords)
+            if (resume.getIntroduction() != null) {
+                org.hibernate.Hibernate.initialize(resume.getIntroduction());
+            }
+
+            // Initialize all Resume collections
             if (resume.getActivities() != null) {
-                resume.getActivities().size();
+                org.hibernate.Hibernate.initialize(resume.getActivities());
             }
             if (resume.getProjects() != null) {
-                resume.getProjects().size();
-                // Project의 중첩 컬렉션도 초기화하여 LazyInitializationException 방지
+                org.hibernate.Hibernate.initialize(resume.getProjects());
+                // Initialize nested Project collections
                 resume.getProjects().forEach(project -> {
                     if (project.getTechStack() != null) {
-                        project.getTechStack().size(); // techStack 컬렉션 초기화
+                        org.hibernate.Hibernate.initialize(project.getTechStack());
                     }
                     if (project.getAchievements() != null) {
-                        project.getAchievements().size(); // achievements 컬렉션 초기화
+                        org.hibernate.Hibernate.initialize(project.getAchievements());
                     }
                 });
             }
             if (resume.getCareers() != null) {
-                resume.getCareers().size();
+                org.hibernate.Hibernate.initialize(resume.getCareers());
             }
             if (resume.getCertificates() != null) {
-                resume.getCertificates().size();
-                // Certificate 엔티티도 초기화하여 LazyInitializationException 방지
+                org.hibernate.Hibernate.initialize(resume.getCertificates());
+                // Initialize Certificate entities (lazy proxies)
                 resume.getCertificates().forEach(rc -> {
                     if (rc.getCertificate() != null) {
-                        rc.getCertificate().getJmfldnm(); // Lazy proxy 초기화
+                        org.hibernate.Hibernate.initialize(rc.getCertificate());
                     }
                 });
+            }
+            if (resume.getEducation() != null) {
+                org.hibernate.Hibernate.initialize(resume.getEducation());
             }
         }
 

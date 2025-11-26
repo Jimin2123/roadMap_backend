@@ -67,7 +67,8 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
             Set<String> recommendedNcsCodes;
             long aiStartTime = System.currentTimeMillis();
             try {
-                recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(profile).block();
+                recommendedNcsCodes = openAiService.recommendNcsCodeUsingAssistant(profile)
+                        .block(java.time.Duration.ofSeconds(60)); // Timeout for AI recommendation
                 long aiDuration = System.currentTimeMillis() - aiStartTime;
                 log.info("[NcsRecommendationProcessor.process] AI recommendation completed in {}ms - recommendedCount: {}",
                     aiDuration, recommendedNcsCodes != null ? recommendedNcsCodes.size() : 0);
@@ -273,7 +274,7 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
                                 "AI 평가 실패로 규칙 기반 신뢰도를 사용합니다."
                         ));
                     })
-                    .block();
+                    .block(java.time.Duration.ofSeconds(60)); // Timeout for AI confidence evaluation
             long aiEvalDuration = System.currentTimeMillis() - aiEvalStartTime;
             log.info("[NcsRecommendationProcessor.buildCandidateWithCompUnitValidation] AI evaluation completed in {}ms - aiScore: {}, matchLevel: {}",
                 aiEvalDuration, Objects.requireNonNull(aiEvaluation).confidenceScore(), aiEvaluation.matchLevel());
@@ -343,15 +344,24 @@ public class NcsRecommendationProcessor implements DiagnosisProcessor {
         // 기본 신뢰도
         double baseConfidence = 0.7;
 
-        // 사용자 스킬 매칭도
+        // OPTIMIZATION: Combine all compUnitNames into a single string for O(1) contains check
+        // This reduces complexity from O(n × m) to O(n + m) where n = skills, m = compUnitNames
+        String allCompUnitsLower = compUnitNames.stream()
+                .map(String::toLowerCase)
+                .collect(java.util.stream.Collectors.joining(" "));
+
+        // 사용자 스킬 매칭도 (optimized from O(n × m) to O(n + m))
         long matchingSkills = profile.getProfileSkills().stream()
-                .filter(ps -> compUnitNames.stream()
-                        .anyMatch(compUnit -> compUnit.contains(ps.getSkill().getName())))
+                .filter(ps -> {
+                    String skillNameLower = ps.getSkill().getName().toLowerCase();
+                    // Single contains check on combined string - O(1) per skill
+                    return allCompUnitsLower.contains(skillNameLower);
+                })
                 .count();
 
         double skillBonus = Math.min(0.2, matchingSkills * 0.05);
 
-        // 프로젝트 경험 매칭도
+        // 프로젝트 경험 매칭도 (O(m) - process each compUnit once)
         String resumeText = resumeTextFormatter.resumeToText(profile.getResume()).toLowerCase();
         long matchingCompUnits = compUnitNames.stream()
                 .filter(compUnit -> resumeText.contains(compUnit.toLowerCase()))

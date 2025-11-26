@@ -166,16 +166,17 @@ public class CertificationRecommendationWorkflow {
     }
 
     /**
-     * 사용자 보유 자격증 추출 (유효한 자격증만)
+     * 사용자 보유 자격증 추출 (모든 자격증 포함)
+     *
+     * 유효성 검사 제거: OpenAI가 자격증의 유효성과 관련성을 평가합니다.
      */
     private Set<String> extractOwnedCertifications(Profile profile) {
         if (profile.getResume() == null || profile.getResume().getCertificates() == null) {
             return Collections.emptySet();
         }
 
-        // 유효한 자격증만 필터링
+        // 모든 자격증 포함 (유효성 검사 제거, OpenAI가 평가)
         return profile.getResume().getCertificates().stream()
-                .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
                 .map(rc -> rc.getCertificate().getJmfldnm())
                 .collect(Collectors.toSet());
     }

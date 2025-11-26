@@ -289,6 +289,8 @@ public class JobRecommendationWorkflow {
      * 4. 0-100점 매칭 점수 산출
      * 5. 맞춤형 추천 이유 생성
      *
+     * 사전 필터링 제거: OpenAI가 모든 채용공고를 평가하고 적합도를 판단합니다.
+     *
      * @param userLocation 사용자 희망 근무 지역 (미리 추출되어 전달됨, LazyInitializationException 방지)
      * @return 평가된 채용공고 리스트 (매칭 점수 및 추천 이유 포함)
      */
@@ -299,7 +301,7 @@ public class JobRecommendationWorkflow {
             List<SaraminJobListResponse.Jobs.Job> jobs,
             String userLocation) {
 
-        log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
+log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
 
         // 사용자의 총 경력 연수 계산
         double userCareerYears = calculateTotalCareerYears(profile);
@@ -452,31 +454,17 @@ public class JobRecommendationWorkflow {
             );
         }
 
-        // 자격증 (유효한 것만 포함)
+        // 자격증 (모든 자격증 포함)
         if (profile.getResume() != null && profile.getResume().getCertificates() != null
                 && !profile.getResume().getCertificates().isEmpty()) {
 
-            // 유효한 자격증만 필터링
+            // 모든 자격증 포함 (유효성 검사 제거, OpenAI가 평가)
             var allCertificates = profile.getResume().getCertificates();
-            var validCertificates = allCertificates.stream()
-                    .filter(cert -> cert.getCertificate().isValidNow(cert.getAcquiredYear()))
-                    .toList();
 
-            // 필터링 로그
-            if (validCertificates.size() < allCertificates.size()) {
-                log.info("[JobRecommendationWorkflow] Filtered out {} expired certificates (valid: {}, total: {})",
-                        allCertificates.size() - validCertificates.size(),
-                        validCertificates.size(),
-                        allCertificates.size());
-            }
-
-            // 유효한 자격증만 컨텍스트에 추가
-            if (!validCertificates.isEmpty()) {
-                context.append("\n### 자격증\n");
-                validCertificates.forEach(cert ->
-                    context.append("- ").append(cert.getCertificate().getJmfldnm()).append("\n")
-                );
-            }
+            context.append("\n### 자격증\n");
+            allCertificates.forEach(cert ->
+                context.append("- ").append(cert.getCertificate().getJmfldnm()).append("\n")
+            );
         }
 
         // KSA 분석 결과

@@ -71,7 +71,7 @@ public class JobRecommendationProcessor implements DiagnosisProcessor {
             // 4. AI 기반 채용공고 추천 워크플로우 실행 (KSA 분석 결과 포함)
             List<JobRecommendationResponse> jobRecommendations = jobRecommendationWorkflow
                     .recommendJobs(context.getProfile(), targetNcsCode, targetKsaAnalysis)
-                    .block(); // 동기 처리 (파이프라인 순차 실행)
+                    .block(java.time.Duration.ofMinutes(3)); // Timeout: 3min for Saramin API pagination + AI filtering
 
             if (jobRecommendations == null || jobRecommendations.isEmpty()) {
                 log.warn("[JobRecommendationProcessor] No job recommendations generated");

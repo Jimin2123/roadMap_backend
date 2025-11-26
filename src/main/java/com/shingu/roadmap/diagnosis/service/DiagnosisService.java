@@ -366,13 +366,41 @@ public class DiagnosisService {
             }
 
             // 두 결과 모두 성공 - context에 결과 병합
-            context = jobResult; // jobResult가 최신 context
-            // certResult의 자격증 추천 결과를 context에 추가
-            if (certResult.getCertificationRecommendations() != null) {
-                context = context.toBuilder()
-                        .certificationRecommendations(certResult.getCertificationRecommendations())
-                        .build();
+            // CRITICAL: Properly merge both parallel results to prevent data loss (race condition fix)
+            log.debug("[DiagnosisService.executePipelineWithParallelization] Merging parallel results safely");
+            DiagnosisContext.DiagnosisContextBuilder mergedBuilder = finalContext.toBuilder();
+
+            // Merge job recommendations from jobResult
+            if (jobResult.getJobRecommendations() != null) {
+                log.debug("[DiagnosisService.executePipelineWithParallelization] Merging {} job recommendations",
+                        jobResult.getJobRecommendations().size());
+                mergedBuilder.jobRecommendations(jobResult.getJobRecommendations());
             }
+
+            // Merge certification recommendations from certResult
+            if (certResult.getCertificationRecommendations() != null) {
+                log.debug("[DiagnosisService.executePipelineWithParallelization] Merging {} certification recommendations",
+                        certResult.getCertificationRecommendations().size());
+                mergedBuilder.certificationRecommendations(certResult.getCertificationRecommendations());
+            }
+
+            // Merge success status (both must succeed for overall success)
+            boolean overallSuccess = jobResult.isSuccess() && certResult.isSuccess();
+            mergedBuilder.success(overallSuccess);
+
+            // Merge error messages if any (prioritize job errors, then cert errors)
+            if (!jobResult.isSuccess() && jobResult.getErrorMessage() != null) {
+                mergedBuilder.errorMessage("Job recommendation error: " + jobResult.getErrorMessage());
+            } else if (!certResult.isSuccess() && certResult.getErrorMessage() != null) {
+                mergedBuilder.errorMessage("Certification recommendation error: " + certResult.getErrorMessage());
+            }
+
+            context = mergedBuilder.build();
+            log.info("[DiagnosisService.executePipelineWithParallelization] Parallel results merged successfully - " +
+                    "jobCount: {}, certCount: {}, overallSuccess: {}",
+                    context.getJobRecommendations() != null ? context.getJobRecommendations().size() : 0,
+                    context.getCertificationRecommendations() != null ? context.getCertificationRecommendations().size() : 0,
+                    overallSuccess);
 
             // Phase 4: 보고서 생성 (순차)
             context = executeSingleProcessor(reportGenerationProcessor, context, 4, 5);
