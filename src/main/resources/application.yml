@@ -24,6 +24,9 @@ spring:
       - saraminJobsForMember
       - saraminJobsMain
       - saraminCompanyLogo
+      # YouthPolicy API 캐시
+      - youthPolicyList
+      - youthPolicyForMember
     redis:
       time-to-live:
         # NCS 캐시 - 24시간 (거의 변경되지 않음)
@@ -36,6 +39,9 @@ spring:
         saraminJobsForMember: 1800000      # 30분
         saraminJobsMain: 1800000           # 30분
         saraminCompanyLogo: 86400000       # 24시간
+        # YouthPolicy 캐시 - 2시간 (정책 정보는 자주 변경되지 않음)
+        youthPolicyList: 7200000           # 2시간
+        youthPolicyForMember: 7200000      # 2시간
 
 server:
   port: 8080
