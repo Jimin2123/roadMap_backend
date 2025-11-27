@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -90,7 +91,7 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
      * Server-Sent Events를 통해 진단 진행 상황을 실시간으로 전송합니다.
      */
     @Override
-    @GetMapping("/api/v1/diagnosis/{id}/stream")
+    @GetMapping(value = "/api/v1/diagnosis/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamDiagnosisProgress(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable("id") Long diagnosisId

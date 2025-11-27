@@ -59,7 +59,7 @@ public class JobRecommendationWorkflow {
      */
     private static final int MIN_MATCH_SCORE = 65;  // 최소 매칭 점수
     private static final int TARGET_JOB_COUNT = 10; // 목표 추천 공고 개수
-    private static final int MAX_PAGES = 5;          // 최대 탐색 페이지 수
+    private static final int MAX_PAGES = 20;         // 최대 탐색 페이지 수
     private static final int JOBS_PER_PAGE = 20;    // 페이지당 채용공고 수
 
     /**
@@ -69,7 +69,7 @@ public class JobRecommendationWorkflow {
      * 1. 1페이지부터 시작하여 Saramin API에서 채용공고 조회
      * 2. OpenAI를 사용하여 각 공고의 매칭 점수와 추천 이유 생성
      * 3. 매칭 점수 65점 이상인 공고만 수집
-     * 4. 10개 이상 수집될 때까지 다음 페이지로 이동 (최대 5페이지)
+     * 4. 10개 이상 수집될 때까지 다음 페이지로 이동 (최대 20페이지)
      * 5. 수집된 공고를 매칭 점수 순으로 정렬하여 반환
      *
      * @param profile 사용자 프로필 (경력, 학력, 스킬, 자격증 포함)
@@ -131,10 +131,10 @@ public class JobRecommendationWorkflow {
      * 페이지네이션을 통해 적합한 채용공고를 수집합니다.
      *
      * 로직:
-     * 1. 1페이지부터 순차적으로 Saramin API 호출
+     * 1. 페이지 번호 1부터 순차적으로 Saramin API 호출
      * 2. 각 페이지의 공고를 OpenAI로 평가
      * 3. 매칭 점수 65점 이상만 수집
-     * 4. 10개 수집되거나 최대 페이지에 도달할 때까지 반복
+     * 4. 10개 수집되거나 최대 20페이지에 도달할 때까지 반복
      */
     private Mono<List<JobRecommendationResponse>> collectQualifiedJobsWithPagination(
             Profile profile,
@@ -143,15 +143,11 @@ public class JobRecommendationWorkflow {
 
         return Mono.fromCallable(() -> {
             List<JobRecommendationResponse> qualifiedJobs = new ArrayList<>();
-            int currentPage = 0; // Saramin API는 0부터 시작
+            int currentPage = 1; // 페이지 번호는 1부터 시작
             int pagesExplored = 0;
 
             log.info("[JobRecommendationWorkflow] Starting pagination - target: {} jobs, maxPages: {}",
                     TARGET_JOB_COUNT, MAX_PAGES);
-
-            // LazyInitializationException 방지: 지역 정보를 미리 추출 (JPA 세션 내에서)
-            final String userLocation = extractUserLocation(profile);
-            log.info("[JobRecommendationWorkflow] User location extracted: {}", userLocation != null ? userLocation : "not specified");
 
             // 검색 전략 결정 (사용자 희망 직무 우선)
             Set<Integer> desiredJobCodes = extractDesiredJobCodes(profile);
@@ -185,7 +181,7 @@ public class JobRecommendationWorkflow {
 
                     // OpenAI를 사용하여 각 공고 평가
                     List<JobRecommendationResponse> evaluatedJobs = evaluateJobsWithAI(
-                            profile, ncsOccupation, ksaAnalysis, jobs, userLocation);
+                            profile, ncsOccupation, ksaAnalysis, jobs);
 
                     // 매칭 점수 65점 이상만 필터링
                     List<JobRecommendationResponse> qualified = evaluatedJobs.stream()
@@ -197,11 +193,11 @@ public class JobRecommendationWorkflow {
                     log.info("[JobRecommendationWorkflow] Page {} evaluation complete - qualified: {}/{}, total collected: {}",
                             pagesExplored, qualified.size(), jobs.size(), qualifiedJobs.size());
 
-                    // 다음 페이지로 이동
-                    currentPage += JOBS_PER_PAGE;
+                    // 다음 페이지로 이동 (1씩 증가)
+                    currentPage++;
 
                     // 더 이상 페이지가 없으면 종료
-                    if (currentPage >= totalJobs) {
+                    if ((currentPage - 1) * JOBS_PER_PAGE >= totalJobs) {
                         log.info("[JobRecommendationWorkflow] Reached end of available jobs");
                         break;
                     }
@@ -234,27 +230,6 @@ public class JobRecommendationWorkflow {
         return profile.getDesiredJobs().stream()
                 .map(SaraminJob::getCode)
                 .collect(Collectors.toSet());
-    }
-
-    /**
-     * 사용자의 희망 근무 지역을 추출합니다.
-     *
-     * LazyInitializationException 방지를 위해 JPA 세션 내에서 호출되어야 합니다.
-     * 이 메서드는 collectQualifiedJobsWithPagination() 시작 시점에 호출되어
-     * 지역 정보를 미리 추출하고 파라미터로 전달하는 방식으로 사용됩니다.
-     *
-     * @param profile 사용자 프로필
-     * @return 사용자 지역명 (예: "서울특별시", "경기도", null)
-     */
-    private String extractUserLocation(Profile profile) {
-        try {
-            if (profile.getMember() != null && profile.getMember().getAddress() != null) {
-                return profile.getMember().getAddress().getRegionCity();
-            }
-        } catch (Exception e) {
-            log.warn("[JobRecommendationWorkflow] Failed to extract user location: {}", e.getMessage());
-        }
-        return null;
     }
 
     /**
@@ -291,17 +266,15 @@ public class JobRecommendationWorkflow {
      *
      * 사전 필터링 제거: OpenAI가 모든 채용공고를 평가하고 적합도를 판단합니다.
      *
-     * @param userLocation 사용자 희망 근무 지역 (미리 추출되어 전달됨, LazyInitializationException 방지)
      * @return 평가된 채용공고 리스트 (매칭 점수 및 추천 이유 포함)
      */
     private List<JobRecommendationResponse> evaluateJobsWithAI(
             Profile profile,
             NcsOccupation ncsOccupation,
             KsaAnalysisResponse ksaAnalysis,
-            List<SaraminJobListResponse.Jobs.Job> jobs,
-            String userLocation) {
+            List<SaraminJobListResponse.Jobs.Job> jobs) {
 
-log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
+        log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size());
 
         // 사용자의 총 경력 연수 계산
         double userCareerYears = calculateTotalCareerYears(profile);
@@ -331,30 +304,20 @@ log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size
             log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to education mismatch", educationFiltered);
         }
 
-        // 3차 필터링: 지역 필터링
-        List<SaraminJobListResponse.Jobs.Job> locationFilteredJobs = educationFilteredJobs.stream()
-                .filter(job -> isJobSuitableForLocation(job, userLocation))
-                .toList();
-
-        int locationFiltered = educationFilteredJobs.size() - locationFilteredJobs.size();
-        if (locationFiltered > 0) {
-            log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to location mismatch", locationFiltered);
-        }
-
-        // 4차 필터링: 급여 조건 필터링
+        // 3차 필터링: 급여 조건 필터링
         Integer userDesiredMinSalary = extractDesiredMinSalary(profile);
-        List<SaraminJobListResponse.Jobs.Job> filteredJobs = locationFilteredJobs.stream()
+        List<SaraminJobListResponse.Jobs.Job> filteredJobs = educationFilteredJobs.stream()
                 .filter(job -> isJobSuitableForSalary(job, userDesiredMinSalary))
                 .toList();
 
-        int salaryFiltered = locationFilteredJobs.size() - filteredJobs.size();
+        int salaryFiltered = educationFilteredJobs.size() - filteredJobs.size();
         if (salaryFiltered > 0) {
             log.info("[JobRecommendationWorkflow] Filtered out {} jobs due to salary below expectation", salaryFiltered);
         }
 
-        log.info("[JobRecommendationWorkflow] Total filtered: {} jobs (career: {}, education: {}, location: {}, salary: {}), remaining: {}",
-                careerFiltered + educationFiltered + locationFiltered + salaryFiltered,
-                careerFiltered, educationFiltered, locationFiltered, salaryFiltered, filteredJobs.size());
+        log.info("[JobRecommendationWorkflow] Total filtered: {} jobs (career: {}, education: {}, salary: {}), remaining: {}",
+                careerFiltered + educationFiltered + salaryFiltered,
+                careerFiltered, educationFiltered, salaryFiltered, filteredJobs.size());
 
         if (filteredJobs.isEmpty()) {
             log.warn("[JobRecommendationWorkflow] No jobs remaining after filtering");
@@ -782,143 +745,6 @@ log.info("[JobRecommendationWorkflow] Evaluating {} jobs with OpenAI", jobs.size
                 sorted.size(), merged.size());
 
         return merged;
-    }
-
-    /**
-     * 채용공고가 사용자의 희망 근무 지역에 적합한지 판단합니다.
-     *
-     * 개선된 판단 기준 (SaraminRegion 활용):
-     * 1. 사용자 지역 정보가 없으면: 모든 공고 허용 (보수적 접근)
-     * 2. 채용공고 지역 정보가 없으면: 보수적으로 허용
-     * 3. "원격근무", "재택근무", "전국", "해외": 항상 허용
-     * 4. SaraminRegion 데이터베이스를 활용한 정확한 지역 매칭
-     *    - 1차 지역 코드 (regionCode1) 기반 광역 단위 매칭
-     *    - 예: "서울특별시" → 101000 → 강남구(101010), 강동구(101020) 모두 매칭
-     *
-     * @param job 채용공고
-     * @param userLocation 사용자 지역 (예: "서울특별시", "경기도", "강남구", null)
-     * @return 적합 여부
-     */
-    private boolean isJobSuitableForLocation(
-            SaraminJobListResponse.Jobs.Job job,
-            String userLocation) {
-
-        // 1. 사용자 지역이 지정되지 않았으면 모든 공고 허용
-        if (userLocation == null || userLocation.isBlank()) {
-            log.debug("[JobRecommendationWorkflow] User location not specified, allowing all jobs");
-            return true;
-        }
-
-        if (job.position() == null || job.position().location() == null
-                || job.position().location().name() == null) {
-            // 2. 공고 지역 정보가 없으면 보수적으로 허용
-            log.debug("[JobRecommendationWorkflow] Job {} has no location info, allowing conservatively", job.id());
-            return true;
-        }
-
-        String jobLocationName = job.position().location().name();
-        log.debug("[JobRecommendationWorkflow] Checking job {} - job location: '{}', user location: '{}'",
-                job.id(), jobLocationName, userLocation);
-
-        // 3. 원격근무 / 재택근무 / 전국 / 해외는 항상 허용
-        if (jobLocationName.contains("원격") || jobLocationName.contains("재택") ||
-                jobLocationName.contains("전국") || jobLocationName.contains("해외")) {
-            log.debug("[JobRecommendationWorkflow] Job is remote/flexible location, allowing");
-            return true;
-        }
-
-        // 4. SaraminRegion 데이터베이스를 활용한 지역 매칭
-        try {
-            // 4-1. 사용자 지역으로 SaraminRegion 검색 (LIKE 검색)
-            List<SaraminRegion> userRegions = saraminRegionRepository.findByNameContainingIgnoreCase(
-                    normalizeLocationForSearch(userLocation)
-            );
-
-            if (userRegions.isEmpty()) {
-                // 사용자 지역을 DB에서 찾을 수 없으면 폴백: 기본 문자열 매칭
-                log.debug("[JobRecommendationWorkflow] User region '{}' not found in DB, using fallback string matching",
-                        userLocation);
-                return fallbackStringLocationMatching(jobLocationName, userLocation);
-            }
-
-            // 4-2. 채용공고 지역으로 SaraminRegion 검색
-            List<SaraminRegion> jobRegions = saraminRegionRepository.findByNameContainingIgnoreCase(
-                    normalizeLocationForSearch(jobLocationName)
-            );
-
-            if (jobRegions.isEmpty()) {
-                // 공고 지역을 DB에서 찾을 수 없으면 폴백: 기본 문자열 매칭
-                log.debug("[JobRecommendationWorkflow] Job location '{}' not found in DB, using fallback string matching",
-                        jobLocationName);
-                return fallbackStringLocationMatching(jobLocationName, userLocation);
-            }
-
-            // 4-3. 1차 지역 코드(regionCode1) 기반 광역 매칭
-            // 사용자 지역과 공고 지역의 1차 지역 코드가 하나라도 일치하면 매칭
-            Set<Integer> userRegionCodes1 = userRegions.stream()
-                    .map(SaraminRegion::getRegionCode1)
-                    .collect(Collectors.toSet());
-
-            Set<Integer> jobRegionCodes1 = jobRegions.stream()
-                    .map(SaraminRegion::getRegionCode1)
-                    .collect(Collectors.toSet());
-
-            boolean matches = userRegionCodes1.stream().anyMatch(jobRegionCodes1::contains);
-
-            log.debug("[JobRecommendationWorkflow] Region code matching - user codes: {}, job codes: {}, matches: {}",
-                    userRegionCodes1, jobRegionCodes1, matches);
-
-            return matches;
-
-        } catch (Exception e) {
-            // 예외 발생 시 보수적으로 허용하고 로그 기록
-            log.error("[JobRecommendationWorkflow] Error during region matching: {}, allowing conservatively",
-                    e.getMessage(), e);
-            return true;
-        }
-    }
-
-    /**
-     * 지역 검색을 위한 정규화
-     * DB 검색 시 불필요한 접미사 제거
-     *
-     * 예시:
-     * - "서울특별시" → "서울"
-     * - "경기도" → "경기"
-     * - "부산광역시" → "부산"
-     */
-    private String normalizeLocationForSearch(String location) {
-        if (location == null || location.isBlank()) {
-            return "";
-        }
-
-        return location.trim()
-                .replace("특별시", "")
-                .replace("광역시", "")
-                .replace("특별자치시", "")
-                .replace("특별자치도", "")
-                .replace("도", "")
-                .trim();
-    }
-
-    /**
-     * 폴백: 기본 문자열 매칭 (DB에서 지역을 찾을 수 없을 때)
-     *
-     * @param jobLocation 공고 지역명
-     * @param userLocation 사용자 지역명
-     * @return 매칭 여부
-     */
-    private boolean fallbackStringLocationMatching(String jobLocation, String userLocation) {
-        String normalizedUserLocation = normalizeLocationForSearch(userLocation);
-        String normalizedJobLocation = normalizeLocationForSearch(jobLocation);
-
-        boolean matches = normalizedJobLocation.contains(normalizedUserLocation) ||
-                normalizedUserLocation.contains(normalizedJobLocation);
-
-        log.debug("[JobRecommendationWorkflow] Fallback string matching - user: '{}', job: '{}', matches: {}",
-                normalizedUserLocation, normalizedJobLocation, matches);
-
-        return matches;
     }
 
     /**
