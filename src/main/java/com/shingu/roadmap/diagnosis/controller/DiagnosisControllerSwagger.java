@@ -1,6 +1,5 @@
 package com.shingu.roadmap.diagnosis.controller;
 
-import com.shingu.roadmap.diagnosis.dto.request.DiagnosisStartRequest;
 import com.shingu.roadmap.diagnosis.dto.request.JobConfirmationRequest;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
@@ -22,8 +21,7 @@ public interface DiagnosisControllerSwagger {
             description = "사용자의 데이터를 기반으로 진단을 실행합니다."
     )
     ResponseEntity<DiagnosisProgressResponse> runDiagnosis(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestBody(required = false) DiagnosisStartRequest request
+            @AuthenticationPrincipal CustomUserDetails userDetails
     );
 
     @Operation(

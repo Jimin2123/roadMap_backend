@@ -53,7 +53,10 @@ public class CareerNetSearchCodeWorkflow {
             %s
         """.formatted(
                 profile.getProfileSkills().stream().map(ps -> ps.getSkill().getName()).collect(Collectors.joining(", ")),
-                profile.getResume() != null ? profile.getResume().getCertificates().stream().map(rc -> rc.getCertificate().getJmfldnm()).collect(Collectors.joining(", ")) : "",
+                // 유효한 자격증만 필터링
+                profile.getResume() != null ? profile.getResume().getCertificates().stream()
+                        .filter(rc -> rc.getCertificate().isValidNow(rc.getAcquiredYear()))
+                        .map(rc -> rc.getCertificate().getJmfldnm()).collect(Collectors.joining(", ")) : "",
                 profile.getUserCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
                 profile.getDesiredCapabilities().stream().map(NcsOccupation::getDutyNm).collect(Collectors.joining(", ")),
                 resumeTextFormatter.resumeToText(profile.getResume())

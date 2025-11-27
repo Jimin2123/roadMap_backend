@@ -2,7 +2,6 @@ package com.shingu.roadmap.diagnosis.controller;
 
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStatus;
 import com.shingu.roadmap.diagnosis.domain.DiagnosisStep;
-import com.shingu.roadmap.diagnosis.dto.request.DiagnosisStartRequest;
 import com.shingu.roadmap.diagnosis.dto.request.JobConfirmationRequest;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisProgressResponse;
 import com.shingu.roadmap.diagnosis.dto.response.DiagnosisResultResponse;
@@ -13,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -38,11 +38,10 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
     @Override
     @PostMapping("/api/v1/diagnosis")
     public ResponseEntity<DiagnosisProgressResponse> runDiagnosis(
-            @AuthenticationPrincipal CustomUserDetails userDetails,
-            @RequestBody(required = false) DiagnosisStartRequest request
+            @AuthenticationPrincipal CustomUserDetails userDetails
     ) {
-        log.debug("[DiagnosisController.runDiagnosis] ENTER - userDetails: {}, request: {}",
-            userDetails != null ? userDetails.getUsername() : "null", request);
+        log.debug("[DiagnosisController.runDiagnosis] ENTER - userDetails: {}",
+            userDetails != null ? userDetails.getUsername() : "null");
 
         long startTime = System.currentTimeMillis();
 
@@ -51,16 +50,11 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             log.info("[DiagnosisController.runDiagnosis] Starting diagnosis for memberId: {}", memberId);
             log.debug("[DiagnosisController.runDiagnosis] User authentication validated - memberId: {}", memberId);
 
-            // 새 진단 생성 및 ID 발급
+            // 새 진단 생성 및 ID 발급 (이미 IN_PROGRESS 상태로 생성됨)
             log.debug("[DiagnosisController.runDiagnosis] Creating new diagnosis for memberId: {}", memberId);
             Long diagnosisId = diagnosisService.createNewDiagnosis(memberId);
-            log.info("[DiagnosisController.runDiagnosis] New diagnosisId created: {} for memberId: {}",
+            log.info("[DiagnosisController.runDiagnosis] New diagnosisId created: {} for memberId: {} (status: IN_PROGRESS)",
                 diagnosisId, memberId);
-
-            // 진단 상태를 IN_PROGRESS로 변경
-            log.debug("[DiagnosisController.runDiagnosis] Updating diagnosis status to IN_PROGRESS for diagnosisId: {}",
-                diagnosisId);
-            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
 
             // 비동기로 진단 실행
             log.info("[DiagnosisController.runDiagnosis] Triggering async diagnosis execution - diagnosisId: {}, memberId: {}",
@@ -97,7 +91,7 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
      * Server-Sent Events를 통해 진단 진행 상황을 실시간으로 전송합니다.
      */
     @Override
-    @GetMapping("/api/v1/diagnosis/{id}/stream")
+    @GetMapping(value = "/api/v1/diagnosis/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamDiagnosisProgress(
             @AuthenticationPrincipal CustomUserDetails userDetails,
             @PathVariable("id") Long diagnosisId
@@ -215,12 +209,7 @@ public class DiagnosisController implements DiagnosisControllerSwagger {
             diagnosisService.verifyDiagnosisOwnershipById(diagnosisId, memberId);
             log.debug("[DiagnosisController.selectJobManually] Ownership verified successfully");
 
-            // 진단 상태를 AWAITING_USER_INPUT에서 IN_PROGRESS로 변경
-            log.debug("[DiagnosisController.selectJobManually] Updating diagnosis status - diagnosisId: {}, from: AWAITING_USER_INPUT, to: IN_PROGRESS",
-                diagnosisId);
-            diagnosisService.updateDiagnosisStatus(diagnosisId, DiagnosisStatus.IN_PROGRESS);
-
-            // 비동기로 진단 재개 (SSE로 진행 상황 전송)
+            // 비동기로 진단 재개 (continueWithUserSelectionAsync()가 상태를 IN_PROGRESS로 변경함)
             log.info("[DiagnosisController.selectJobManually] Triggering async diagnosis continuation - diagnosisId: {}, selectedNcsCode: {}",
                 diagnosisId, request.selectedNcsCode());
             diagnosisService.continueWithUserSelectionAsync(diagnosisId, request.selectedNcsCode());

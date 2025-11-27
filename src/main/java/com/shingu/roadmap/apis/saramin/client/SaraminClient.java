@@ -44,9 +44,7 @@ public class SaraminClient {
 //      builder.queryParam("keywords", keyword);
 //    }
 
-    if(page > 0) {
-      builder.queryParam("start", page); // 페이지 시작 위치
-    }
+    builder.queryParam("start", page); // 페이지 시작 위치 (0부터 명시)
 
     if(groupCodes != null && !groupCodes.isEmpty()) {
       builder.queryParam("job_mid_cd", String.join(",", groupCodes.stream().map(String::valueOf).toList()));

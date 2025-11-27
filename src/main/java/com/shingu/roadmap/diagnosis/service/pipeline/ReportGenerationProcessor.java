@@ -165,7 +165,7 @@ public class ReportGenerationProcessor implements DiagnosisProcessor {
                 // 2. 커리어넷 통합 정보 조회 (Job Info, Encyclopedia, Counseling Cases)
                 CareerNetIntegratedResponse integratedResponse = careerNetIntegrationService
                         .getIntegratedCareerInfo(ncsOccupation)
-                        .block();
+                        .block(java.time.Duration.ofSeconds(30)); // Timeout for CareerNet API
 
                 CareerNetJobInfo careerNetJobInfo = null;
 
