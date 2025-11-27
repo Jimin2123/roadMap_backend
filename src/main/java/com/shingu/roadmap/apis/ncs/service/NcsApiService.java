@@ -9,6 +9,7 @@ import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
 import com.shingu.roadmap.apis.ncs.repository.NcsTrainingStandardRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -16,21 +17,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class NcsApiService {
+public class NcsApiService implements DisposableBean {
 
   private final NcsApiClient ncsApiClient;
   private final NcsOccupationRepository ncsOccupationRepository;
   private final NcsTrainingStandardRepository ncsTrainingStandardRepository;
 
   // 병렬 처리를 위한 전용 스레드 풀
-  private final Executor ncsProcessingExecutor = Executors.newFixedThreadPool(5);
+  private final ExecutorService ncsProcessingExecutor = Executors.newFixedThreadPool(5);
 
   /**
    * NCS 코드 유효성 검사 및 등록 (병렬 처리 최적화)
@@ -190,5 +192,28 @@ public class NcsApiService {
    */
   public NcsKsaResponse getNcsKsa(String ncsCode, String compUnitCd) {
     return ncsApiClient.getNcsKsaByDutyCode(ncsCode, compUnitCd);
+  }
+
+  /**
+   * Bean 소멸 시 ExecutorService를 안전하게 종료합니다.
+   */
+  @Override
+  public void destroy() throws Exception {
+    log.info("Shutting down NCS processing executor...");
+    ncsProcessingExecutor.shutdown();
+    try {
+      if (!ncsProcessingExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+        log.warn("Executor did not terminate in the specified time. Forcing shutdown...");
+        ncsProcessingExecutor.shutdownNow();
+        if (!ncsProcessingExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+          log.error("Executor did not terminate");
+        }
+      }
+    } catch (InterruptedException e) {
+      log.error("Executor shutdown interrupted", e);
+      ncsProcessingExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
+    log.info("NCS processing executor shutdown completed");
   }
 }

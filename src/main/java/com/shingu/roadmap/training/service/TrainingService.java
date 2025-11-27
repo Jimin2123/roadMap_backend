@@ -18,6 +18,7 @@ import com.shingu.roadmap.training.repository.EmploymentCenterRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import java.util.List;
@@ -42,6 +43,7 @@ public class TrainingService {
    *         추천이 생성되지 않은 경우 {@code null}을 반환할 수 있습니다.
    * @throws EntityNotFoundException 지정된 ID를 가진 회원이 존재하지 않거나 삭제된 경우 발생합니다.
    */
+  @Transactional(readOnly = true)
   public List<TrainingCourseResponse.TrainCourseItem> recommendCoursesForMember(Long memberId) {
     Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new EntityNotFoundException("Member not found"));
@@ -78,6 +80,7 @@ public class TrainingService {
             .collect(Collectors.toList());
   }
 
+  @Transactional(readOnly = true)
   public List<EmpPgmListResponse.EmpPgmSchdInvite> getTrainingProgramsForMember(Long memberId) {
     Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new EntityNotFoundException("Member not found"));
