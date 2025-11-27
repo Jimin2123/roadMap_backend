@@ -154,43 +154,51 @@ public class NcsApiService implements DisposableBean {
   }
 
   /**
-   * NCS 직무 정보 조회
+   * NCS 직무 정보 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 직무 응답 DTO
    */
+  @Cacheable(value = "ncsOccupationDetails", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsOccupationResponse getOccupation(String ncsCode) {
+    log.debug("Fetching NCS occupation from external API for code: {}", ncsCode);
     return ncsApiClient.getOccupation(ncsCode);
   }
 
   /**
-   * NCS 직책 조회
+   * NCS 직책 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 직책 응답 DTO
    */
+  @Cacheable(value = "ncsJobPosition", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsJobPositionResponse getNcsJobPosition(String ncsCode) {
+    log.debug("Fetching NCS job position from external API for code: {}", ncsCode);
     return ncsApiClient.getNcsJobPosition(ncsCode);
   }
 
   /**
-   * NCS 능력단위 조회
+   * NCS 능력단위 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 능력단위 응답 DTO
    */
+  @Cacheable(value = "ncsCompetencyUnit", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsCompUnitResponse getNcsCompUnit(String ncsCode) {
+    log.debug("Fetching NCS competency unit from external API for code: {}", ncsCode);
     return ncsApiClient.getNcsCompetencyUnit(ncsCode);
   }
 
   /**
-   * NCS KSA 조회
+   * NCS KSA 조회 (캐싱 적용)
    *
    * @param ncsCode    NCS 코드
    * @param compUnitCd 능력단위 코드
    * @return NCS KSA 응답 DTO
    */
+  @Cacheable(value = "ncsKsa", key = "#ncsCode + '_' + #compUnitCd", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsKsaResponse getNcsKsa(String ncsCode, String compUnitCd) {
+    log.debug("Fetching NCS KSA from external API for code: {}, compUnitCd: {}", ncsCode, compUnitCd);
     return ncsApiClient.getNcsKsaByDutyCode(ncsCode, compUnitCd);
   }
 

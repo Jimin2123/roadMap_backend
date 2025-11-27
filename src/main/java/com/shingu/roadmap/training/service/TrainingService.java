@@ -17,16 +17,19 @@ import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.training.repository.EmploymentCenterRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TrainingService {
   private final MemberRepository memberRepository;
   private final EmploymentCenterRepository employmentCenterRepository;
@@ -70,7 +73,20 @@ public class TrainingService {
     ProfileResponse profileResponse = ProfileResponse.from(profile);
     TrainingRecommendationRequest request = new TrainingRecommendationRequest(profileResponse, trainings, address);
 
-    Set<String> aiResponse = openAiService.recommendTrainingCourse(request).block();
+    // TODO: 향후 개선 - 완전한 리액티브 체인으로 변환 (Controller까지 Mono 반환)
+    // 현재는 타임아웃을 설정하여 무한 블로킹 방지
+    Set<String> aiResponse;
+    try {
+      aiResponse = openAiService.recommendTrainingCourse(request)
+              .timeout(Duration.ofSeconds(30))  // 30초 타임아웃 설정
+              .doOnError(error -> log.error("Failed to get AI recommendation for member {}: {}",
+                      memberId, error.getMessage()))
+              .block();
+    } catch (Exception e) {
+      log.error("AI recommendation failed for member {}, returning all courses", memberId, e);
+      throw new RuntimeException("Failed to get AI training recommendations: " + e.getMessage(), e);
+    }
+
     if (CollectionUtils.isEmpty(aiResponse)) {
       throw new RuntimeException("No training courses found for member ID: " + memberId);
     }
