@@ -49,9 +49,9 @@ public class AuthService {
    */
   @Transactional
   public LoginResponse login(LoginRequest request) {
+    // 1) 인증 (실패 시 AuthenticationException이 InvalidCredentialsException으로 변환됨)
     try {
-      // 1) 인증
-      Authentication authentication = authenticationManager.authenticate(
+      authenticationManager.authenticate(
               new UsernamePasswordAuthenticationToken(request.email(), request.password())
       );
     } catch (AuthenticationException e) {

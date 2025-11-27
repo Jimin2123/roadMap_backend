@@ -97,8 +97,15 @@ public class MemberService {
     }
 
     public ProfileResponse getProfile(Long memberId) {
-        Profile profile = findMember(memberId).getProfile();
+        // N+1 쿼리 방지: Profile과 연관된 모든 엔티티를 한 번에 로딩
+        Member member = memberRepository.findByIdWithProfile(memberId)
+                .orElseThrow(() -> new MemberNotFoundException(memberId));
+
+        Profile profile = member.getProfile();
         if (profile == null) throw new ProfileNotFoundException(memberId);
+
+        // 나머지 컬렉션(desiredJobs, desiredCapabilities, userCapabilities)은
+        // batch fetching으로 효율적으로 로딩됨 (application.yml의 default_batch_fetch_size 설정)
         return ProfileResponse.from(profile);
     }
 
@@ -230,12 +237,35 @@ public class MemberService {
         if (req == null || CollectionUtils.isEmpty(req.skills()))
             return;
 
-        for (var skillReq : req.skills()) {
-            Skill skill = skillRepository.findByName(skillReq.name())
-                    .orElseGet(() -> skillRepository.save(Skill.builder().name(skillReq.name()).build()));
+        // 배치 조회로 N+1 쿼리 방지
+        Set<String> skillNames = req.skills().stream()
+                .map(com.shingu.roadmap.member.dto.request.SkillRequest::name)
+                .collect(Collectors.toSet());
 
-            ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
-            profile.addSkill(ps);
+        // 1. 기존 스킬들을 한 번에 조회
+        java.util.Map<String, Skill> existingSkills = skillRepository.findAllByNameIn(skillNames)
+                .stream()
+                .collect(Collectors.toMap(Skill::getName, s -> s));
+
+        // 2. 새로 생성해야 할 스킬들 추출
+        Set<Skill> newSkills = skillNames.stream()
+                .filter(name -> !existingSkills.containsKey(name))
+                .map(name -> Skill.builder().name(name).build())
+                .collect(Collectors.toSet());
+
+        // 3. 새 스킬들을 배치로 저장
+        if (!newSkills.isEmpty()) {
+            List<Skill> savedSkills = skillRepository.saveAll(newSkills);
+            savedSkills.forEach(skill -> existingSkills.put(skill.getName(), skill));
+        }
+
+        // 4. ProfileSkill 생성 및 추가
+        for (var skillReq : req.skills()) {
+            Skill skill = existingSkills.get(skillReq.name());
+            if (skill != null) {
+                ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
+                profile.addSkill(ps);
+            }
         }
     }
 
@@ -260,12 +290,35 @@ public class MemberService {
         if (req == null || CollectionUtils.isEmpty(req.skills()))
             return;
 
-        for (var skillReq : req.skills()) {
-            Skill skill = skillRepository.findByName(skillReq.name())
-                    .orElseGet(() -> skillRepository.save(Skill.builder().name(skillReq.name()).build()));
+        // 배치 조회로 N+1 쿼리 방지
+        Set<String> skillNames = req.skills().stream()
+                .map(com.shingu.roadmap.member.dto.request.SkillRequest::name)
+                .collect(Collectors.toSet());
 
-            ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
-            profile.addSkill(ps);
+        // 1. 기존 스킬들을 한 번에 조회
+        java.util.Map<String, Skill> existingSkills = skillRepository.findAllByNameIn(skillNames)
+                .stream()
+                .collect(Collectors.toMap(Skill::getName, s -> s));
+
+        // 2. 새로 생성해야 할 스킬들 추출
+        Set<Skill> newSkills = skillNames.stream()
+                .filter(name -> !existingSkills.containsKey(name))
+                .map(name -> Skill.builder().name(name).build())
+                .collect(Collectors.toSet());
+
+        // 3. 새 스킬들을 배치로 저장
+        if (!newSkills.isEmpty()) {
+            List<Skill> savedSkills = skillRepository.saveAll(newSkills);
+            savedSkills.forEach(skill -> existingSkills.put(skill.getName(), skill));
+        }
+
+        // 4. ProfileSkill 생성 및 추가
+        for (var skillReq : req.skills()) {
+            Skill skill = existingSkills.get(skillReq.name());
+            if (skill != null) {
+                ProfileSkill ps = ProfileSkill.of(profile, skill, skillReq.proficiency());
+                profile.addSkill(ps);
+            }
         }
     }
 

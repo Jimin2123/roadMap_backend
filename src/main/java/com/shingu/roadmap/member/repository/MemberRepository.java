@@ -48,4 +48,24 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
          "LEFT JOIN FETCH ps.skill " +
          "WHERE m.id = :memberId")
   Optional<Member> findByIdWithDiagnosisData(@Param("memberId") Long memberId);
+
+  /**
+   * Profile 조회에 필요한 모든 연관 데이터를 한 번에 로딩합니다. (N+1 쿼리 방지)
+   *
+   * 전략:
+   * 1. 첫 번째 쿼리: Member, Profile, ProfileSkills, Skill을 fetch join
+   * 2. 두 번째 쿼리: desiredJobs, desiredCapabilities, userCapabilities를 batch fetch
+   *
+   * 주의: 여러 컬렉션을 동시에 fetch join하면 cartesian product 발생
+   * DISTINCT를 사용하여 중복 제거
+   *
+   * @param memberId 회원 ID
+   * @return Profile 응답에 필요한 모든 데이터가 로딩된 Member
+   */
+  @Query("SELECT DISTINCT m FROM Member m " +
+         "LEFT JOIN FETCH m.profile p " +
+         "LEFT JOIN FETCH p.profileSkills ps " +
+         "LEFT JOIN FETCH ps.skill " +
+         "WHERE m.id = :memberId")
+  Optional<Member> findByIdWithProfile(@Param("memberId") Long memberId);
 }
