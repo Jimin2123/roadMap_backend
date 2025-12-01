@@ -9,6 +9,7 @@ import com.shingu.roadmap.apis.ncs.repository.NcsOccupationRepository;
 import com.shingu.roadmap.apis.ncs.repository.NcsTrainingStandardRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -16,21 +17,22 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class NcsApiService {
+public class NcsApiService implements DisposableBean {
 
   private final NcsApiClient ncsApiClient;
   private final NcsOccupationRepository ncsOccupationRepository;
   private final NcsTrainingStandardRepository ncsTrainingStandardRepository;
 
   // 병렬 처리를 위한 전용 스레드 풀
-  private final Executor ncsProcessingExecutor = Executors.newFixedThreadPool(5);
+  private final ExecutorService ncsProcessingExecutor = Executors.newFixedThreadPool(5);
 
   /**
    * NCS 코드 유효성 검사 및 등록 (병렬 처리 최적화)
@@ -152,43 +154,74 @@ public class NcsApiService {
   }
 
   /**
-   * NCS 직무 정보 조회
+   * NCS 직무 정보 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 직무 응답 DTO
    */
+  @Cacheable(value = "ncsOccupationDetails", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsOccupationResponse getOccupation(String ncsCode) {
+    log.debug("Fetching NCS occupation from external API for code: {}", ncsCode);
     return ncsApiClient.getOccupation(ncsCode);
   }
 
   /**
-   * NCS 직책 조회
+   * NCS 직책 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 직책 응답 DTO
    */
+  @Cacheable(value = "ncsJobPosition", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsJobPositionResponse getNcsJobPosition(String ncsCode) {
+    log.debug("Fetching NCS job position from external API for code: {}", ncsCode);
     return ncsApiClient.getNcsJobPosition(ncsCode);
   }
 
   /**
-   * NCS 능력단위 조회
+   * NCS 능력단위 조회 (캐싱 적용)
    *
    * @param ncsCode NCS 코드
    * @return NCS 능력단위 응답 DTO
    */
+  @Cacheable(value = "ncsCompetencyUnit", key = "#ncsCode", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsCompUnitResponse getNcsCompUnit(String ncsCode) {
+    log.debug("Fetching NCS competency unit from external API for code: {}", ncsCode);
     return ncsApiClient.getNcsCompetencyUnit(ncsCode);
   }
 
   /**
-   * NCS KSA 조회
+   * NCS KSA 조회 (캐싱 적용)
    *
    * @param ncsCode    NCS 코드
    * @param compUnitCd 능력단위 코드
    * @return NCS KSA 응답 DTO
    */
+  @Cacheable(value = "ncsKsa", key = "#ncsCode + '_' + #compUnitCd", unless = "#result == null || #result.data() == null || #result.data().isEmpty()")
   public NcsKsaResponse getNcsKsa(String ncsCode, String compUnitCd) {
+    log.debug("Fetching NCS KSA from external API for code: {}, compUnitCd: {}", ncsCode, compUnitCd);
     return ncsApiClient.getNcsKsaByDutyCode(ncsCode, compUnitCd);
+  }
+
+  /**
+   * Bean 소멸 시 ExecutorService를 안전하게 종료합니다.
+   */
+  @Override
+  public void destroy() throws Exception {
+    log.info("Shutting down NCS processing executor...");
+    ncsProcessingExecutor.shutdown();
+    try {
+      if (!ncsProcessingExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+        log.warn("Executor did not terminate in the specified time. Forcing shutdown...");
+        ncsProcessingExecutor.shutdownNow();
+        if (!ncsProcessingExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+          log.error("Executor did not terminate");
+        }
+      }
+    } catch (InterruptedException e) {
+      log.error("Executor shutdown interrupted", e);
+      ncsProcessingExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+    }
+    log.info("NCS processing executor shutdown completed");
   }
 }

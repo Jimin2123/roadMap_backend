@@ -2,6 +2,7 @@ package com.shingu.roadmap.resume.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.BatchSize;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -66,6 +67,7 @@ public class Resume {
 
   @OneToMany(mappedBy = "resume", fetch = FetchType.LAZY,
           cascade = CascadeType.ALL, orphanRemoval = true)
+  @BatchSize(size = 10)
   @Builder.Default
   private Set<ResumeCertificate> certificates = new HashSet<>();
 

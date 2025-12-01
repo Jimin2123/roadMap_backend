@@ -40,6 +40,7 @@ public class OpenAiCacheConfig {
     public static final String ASSISTANT_THREAD_CACHE = "openai:assistant-thread";
     public static final String JOB_RECOMMENDATION_CACHE = "openai:job-recommendation";
     public static final String CERTIFICATION_RECOMMENDATION_CACHE = "openai:certification-recommendation";
+    public static final String CAREER_LEVEL_EVALUATION_CACHE = "openai:career-level-evaluation";
 
     @Bean("redisCacheManager")
     public CacheManager redisCacheManager(RedisConnectionFactory redisConnectionFactory) {
@@ -91,6 +92,11 @@ public class OpenAiCacheConfig {
         // 사용자 역량 기반 분석 결과이므로 중간 TTL 설정
         cacheConfigurations.put(CERTIFICATION_RECOMMENDATION_CACHE,
             defaultCacheConfig.entryTtl(Duration.ofHours(8)));
+
+        // 경력 레벨 평가 - 12시간 캐싱 (Phase 3 A1)
+        // 프로필 기반 AI 평가이므로 장기 캐싱 가능
+        cacheConfigurations.put(CAREER_LEVEL_EVALUATION_CACHE,
+            defaultCacheConfig.entryTtl(Duration.ofHours(12)));
 
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(defaultCacheConfig)

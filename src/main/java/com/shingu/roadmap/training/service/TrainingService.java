@@ -17,15 +17,19 @@ import com.shingu.roadmap.member.repository.MemberRepository;
 import com.shingu.roadmap.training.repository.EmploymentCenterRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TrainingService {
   private final MemberRepository memberRepository;
   private final EmploymentCenterRepository employmentCenterRepository;
@@ -42,6 +46,7 @@ public class TrainingService {
    *         추천이 생성되지 않은 경우 {@code null}을 반환할 수 있습니다.
    * @throws EntityNotFoundException 지정된 ID를 가진 회원이 존재하지 않거나 삭제된 경우 발생합니다.
    */
+  @Transactional(readOnly = true)
   public List<TrainingCourseResponse.TrainCourseItem> recommendCoursesForMember(Long memberId) {
     Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new EntityNotFoundException("Member not found"));
@@ -68,7 +73,20 @@ public class TrainingService {
     ProfileResponse profileResponse = ProfileResponse.from(profile);
     TrainingRecommendationRequest request = new TrainingRecommendationRequest(profileResponse, trainings, address);
 
-    Set<String> aiResponse = openAiService.recommendTrainingCourse(request).block();
+    // TODO: 향후 개선 - 완전한 리액티브 체인으로 변환 (Controller까지 Mono 반환)
+    // 현재는 타임아웃을 설정하여 무한 블로킹 방지
+    Set<String> aiResponse;
+    try {
+      aiResponse = openAiService.recommendTrainingCourse(request)
+              .timeout(Duration.ofSeconds(30))  // 30초 타임아웃 설정
+              .doOnError(error -> log.error("Failed to get AI recommendation for member {}: {}",
+                      memberId, error.getMessage()))
+              .block();
+    } catch (Exception e) {
+      log.error("AI recommendation failed for member {}, returning all courses", memberId, e);
+      throw new RuntimeException("Failed to get AI training recommendations: " + e.getMessage(), e);
+    }
+
     if (CollectionUtils.isEmpty(aiResponse)) {
       throw new RuntimeException("No training courses found for member ID: " + memberId);
     }
@@ -78,6 +96,7 @@ public class TrainingService {
             .collect(Collectors.toList());
   }
 
+  @Transactional(readOnly = true)
   public List<EmpPgmListResponse.EmpPgmSchdInvite> getTrainingProgramsForMember(Long memberId) {
     Member member = memberRepository.findById(memberId)
             .orElseThrow(() -> new EntityNotFoundException("Member not found"));

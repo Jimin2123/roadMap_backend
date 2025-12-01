@@ -28,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 진단 서비스 - 파이프라인 오케스트레이터
@@ -103,19 +106,10 @@ public class DiagnosisService {
                     .build();
             log.debug("[DiagnosisService.executeDiagnosisAsync] Context initialized successfully");
 
-            // 3. 파이프라인 프로세서 목록
-            List<DiagnosisProcessor> processors = List.of(
-                    ncsRecommendationProcessor,
-                    competencyAnalysisProcessor,
-                    jobRecommendationProcessor,
-                    certificationRecommendationProcessor,
-                    reportGenerationProcessor
-            );
-            log.info("[DiagnosisService.executeDiagnosisAsync] Starting pipeline with {} processors", processors.size());
-
-            // 4. 파이프라인 실행 (진행 상황 전송 포함)
+            // 3. 파이프라인 실행 (병렬화 적용) - Phase 3 A2
+            log.info("[DiagnosisService.executeDiagnosisAsync] Starting optimized pipeline with parallelization");
             long pipelineStartTime = System.currentTimeMillis();
-            context = executePipelineWithProgress(processors, context);
+            context = executePipelineWithParallelization(context);
             long pipelineDuration = System.currentTimeMillis() - pipelineStartTime;
             log.info("[DiagnosisService.executeDiagnosisAsync] Pipeline execution completed in {}ms - success: {}",
                 pipelineDuration, context.isSuccess());
@@ -262,6 +256,211 @@ public class DiagnosisService {
     }
 
     /**
+     * 병렬화가 적용된 파이프라인 실행 (Phase 3 A2)
+     *
+     * 실행 순서:
+     * 1. NCS 추천 (순차)
+     * 2. 역량 분석 (순차)
+     * 3. 채용공고 추천 + 자격증 추천 (병렬)
+     * 4. 보고서 생성 (순차)
+     *
+     * @param context 진단 컨텍스트
+     * @return 처리된 진단 컨텍스트
+     */
+    private DiagnosisContext executePipelineWithParallelization(DiagnosisContext context) {
+        log.info("[DiagnosisService.executePipelineWithParallelization] ENTER - diagnosisId: {}", context.getDiagnosisId());
+        long totalPipelineStartTime = System.currentTimeMillis();
+
+        try {
+            // Phase 1: NCS 추천 (순차)
+            context = executeSingleProcessor(ncsRecommendationProcessor, context, 1, 5);
+            if (!context.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] NCS recommendation failed, stopping pipeline");
+                return context;
+            }
+
+            // Phase 2: 역량 분석 (순차)
+            context = executeSingleProcessor(competencyAnalysisProcessor, context, 2, 5);
+            if (!context.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] Competency analysis failed, stopping pipeline");
+                return context;
+            }
+
+            // Phase 3: 채용공고 추천 + 자격증 추천 (병렬)
+            log.info("[DiagnosisService.executePipelineWithParallelization] Starting parallel execution - Job & Certification recommendations");
+            long parallelStartTime = System.currentTimeMillis();
+
+            // Lambda에서 사용할 final 변수
+            final DiagnosisContext finalContext = context;
+
+            // 병렬 실행을 위한 CompletableFuture 생성
+            CompletableFuture<DiagnosisContext> jobFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Starting job recommendation");
+                    long jobStartTime = System.currentTimeMillis();
+
+                    // 진행 상황 전송
+                    sendProgress(finalContext.getDiagnosisId(), DiagnosisStep.JOB_MATCHING, 60,
+                            DiagnosisStatus.IN_PROGRESS, "채용공고 추천 중...");
+
+                    DiagnosisContext jobContext = jobRecommendationProcessor.process(finalContext);
+                    long jobDuration = System.currentTimeMillis() - jobStartTime;
+
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Completed in {}ms - success: {}",
+                            jobDuration, jobContext.isSuccess());
+                    return jobContext;
+                } catch (Exception e) {
+                    log.error("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-JOB] Exception: {}", e.getMessage(), e);
+                    DiagnosisContext errorContext = finalContext.toBuilder()
+                            .success(false)
+                            .errorMessage("채용공고 추천 중 오류 발생: " + e.getMessage())
+                            .build();
+                    return errorContext;
+                }
+            });
+
+            CompletableFuture<DiagnosisContext> certFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Starting certification recommendation");
+                    long certStartTime = System.currentTimeMillis();
+
+                    // 진행 상황 전송
+                    sendProgress(finalContext.getDiagnosisId(), DiagnosisStep.JOB_MATCHING, 75,
+                            DiagnosisStatus.IN_PROGRESS, "자격증 추천 중...");
+
+                    DiagnosisContext certContext = certificationRecommendationProcessor.process(finalContext);
+                    long certDuration = System.currentTimeMillis() - certStartTime;
+
+                    log.info("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Completed in {}ms - success: {}",
+                            certDuration, certContext.isSuccess());
+                    return certContext;
+                } catch (Exception e) {
+                    log.error("[DiagnosisService.executePipelineWithParallelization] [PARALLEL-CERT] Exception: {}", e.getMessage(), e);
+                    DiagnosisContext errorContext = finalContext.toBuilder()
+                            .success(false)
+                            .errorMessage("자격증 추천 중 오류 발생: " + e.getMessage())
+                            .build();
+                    return errorContext;
+                }
+            });
+
+            // 두 작업이 모두 완료될 때까지 대기
+            CompletableFuture.allOf(jobFuture, certFuture).join();
+
+            // 결과 병합
+            DiagnosisContext jobResult = jobFuture.join();
+            DiagnosisContext certResult = certFuture.join();
+            long parallelDuration = System.currentTimeMillis() - parallelStartTime;
+
+            log.info("[DiagnosisService.executePipelineWithParallelization] Parallel execution completed in {}ms - jobSuccess: {}, certSuccess: {}",
+                    parallelDuration, jobResult.isSuccess(), certResult.isSuccess());
+
+            // 두 결과를 컨텍스트에 병합 (둘 중 하나라도 실패하면 실패로 처리)
+            if (!jobResult.isSuccess() || !certResult.isSuccess()) {
+                log.error("[DiagnosisService.executePipelineWithParallelization] One or both parallel processors failed");
+                context = context.toBuilder()
+                        .success(false)
+                        .errorMessage("채용공고 또는 자격증 추천 중 오류 발생")
+                        .build();
+                return context;
+            }
+
+            // 두 결과 모두 성공 - context에 결과 병합
+            // CRITICAL: Properly merge both parallel results to prevent data loss (race condition fix)
+            log.debug("[DiagnosisService.executePipelineWithParallelization] Merging parallel results safely");
+            DiagnosisContext.DiagnosisContextBuilder mergedBuilder = finalContext.toBuilder();
+
+            // Merge job recommendations from jobResult
+            if (jobResult.getJobRecommendations() != null) {
+                log.debug("[DiagnosisService.executePipelineWithParallelization] Merging {} job recommendations",
+                        jobResult.getJobRecommendations().size());
+                mergedBuilder.jobRecommendations(jobResult.getJobRecommendations());
+            }
+
+            // Merge certification recommendations from certResult
+            if (certResult.getCertificationRecommendations() != null) {
+                log.debug("[DiagnosisService.executePipelineWithParallelization] Merging {} certification recommendations",
+                        certResult.getCertificationRecommendations().size());
+                mergedBuilder.certificationRecommendations(certResult.getCertificationRecommendations());
+            }
+
+            // Merge success status (both must succeed for overall success)
+            boolean overallSuccess = jobResult.isSuccess() && certResult.isSuccess();
+            mergedBuilder.success(overallSuccess);
+
+            // Merge error messages if any (prioritize job errors, then cert errors)
+            if (!jobResult.isSuccess() && jobResult.getErrorMessage() != null) {
+                mergedBuilder.errorMessage("Job recommendation error: " + jobResult.getErrorMessage());
+            } else if (!certResult.isSuccess() && certResult.getErrorMessage() != null) {
+                mergedBuilder.errorMessage("Certification recommendation error: " + certResult.getErrorMessage());
+            }
+
+            context = mergedBuilder.build();
+            log.info("[DiagnosisService.executePipelineWithParallelization] Parallel results merged successfully - " +
+                    "jobCount: {}, certCount: {}, overallSuccess: {}",
+                    context.getJobRecommendations() != null ? context.getJobRecommendations().size() : 0,
+                    context.getCertificationRecommendations() != null ? context.getCertificationRecommendations().size() : 0,
+                    overallSuccess);
+
+            // Phase 4: 보고서 생성 (순차)
+            context = executeSingleProcessor(reportGenerationProcessor, context, 4, 5);
+
+            long totalDuration = System.currentTimeMillis() - totalPipelineStartTime;
+            log.info("[DiagnosisService.executePipelineWithParallelization] EXIT - totalDuration: {}ms, success: {}, parallelSpeedup: {}ms",
+                    totalDuration, context.isSuccess(), parallelDuration);
+
+        } catch (Exception e) {
+            log.error("[DiagnosisService.executePipelineWithParallelization] EXCEPTION: {}", e.getMessage(), e);
+            context = context.toBuilder()
+                    .success(false)
+                    .errorMessage("파이프라인 실행 중 예외 발생: " + e.getMessage())
+                    .build();
+        }
+
+        return context;
+    }
+
+    /**
+     * 단일 프로세서 실행 헬퍼 메서드
+     */
+    private DiagnosisContext executeSingleProcessor(DiagnosisProcessor processor, DiagnosisContext context,
+                                                      int step, int totalSteps) {
+        String processorName = processor.getName();
+        log.info("[DiagnosisService.executeSingleProcessor] Executing {}/{} - {}", step, totalSteps, processorName);
+        long startTime = System.currentTimeMillis();
+
+        // 진행 상황 전송
+        ProcessorProgress progress = PROCESSOR_PROGRESS_MAP.get(processorName);
+        if (progress != null) {
+            sendProgress(context.getDiagnosisId(), progress.step(), progress.percentage(),
+                    DiagnosisStatus.IN_PROGRESS, progress.message());
+        }
+
+        try {
+            context = processor.process(context);
+            long duration = System.currentTimeMillis() - startTime;
+
+            if (context.isSuccess()) {
+                log.info("[DiagnosisService.executeSingleProcessor] Completed successfully - {}, duration: {}ms",
+                        processorName, duration);
+            } else {
+                log.error("[DiagnosisService.executeSingleProcessor] Failed - {}, duration: {}ms, error: {}",
+                        processorName, duration, context.getErrorMessage());
+            }
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            log.error("[DiagnosisService.executeSingleProcessor] Exception - {}, duration: {}ms, error: {}",
+                    processorName, duration, e.getMessage(), e);
+            context = context.toBuilder()
+                    .success(false)
+                    .errorMessage("프로세서 실행 중 오류: " + processorName)
+                    .build();
+        }
+
+        return context;
+    }
+
+    /**
      * 진행 상황을 SSE로 전송합니다.
      */
     private void sendProgress(Long diagnosisId, DiagnosisStep step, int percentage, DiagnosisStatus status, String message) {
@@ -289,9 +488,11 @@ public class DiagnosisService {
      * 새로운 진단을 생성하고 진단 ID를 반환합니다.
      * 이미 진행 중인 진단이 있으면 예외를 발생시킵니다.
      *
-     * TOCTOU 경쟁 조건 방지:
-     * - 비관적 락을 사용하여 동시 요청 시 데이터베이스 레벨에서 직렬화
-     * - 진단 생성 직후 즉시 IN_PROGRESS 상태로 전환하여 중복 생성 방지
+     * Race Condition 방지 전략:
+     * 1. 비관적 락으로 기존 진단 체크
+     * 2. 바로 IN_PROGRESS 상태로 생성 (PENDING 단계 스킵)
+     * 3. saveAndFlush로 즉시 DB 반영 및 트랜잭션 커밋
+     * 4. DB unique constraint (member_id + active status)로 이중 보호
      *
      * @param memberId 회원 ID
      * @return 생성된 진단 ID
@@ -326,23 +527,21 @@ public class DiagnosisService {
                 throw new DiagnosisAlreadyInProgressException(memberId);
             }
 
-            // 진단 생성 및 즉시 IN_PROGRESS 상태로 전환
-            log.debug("[DiagnosisService.createNewDiagnosis] Creating new diagnosis entity with PENDING status");
-            DiagnosisResult diagnosis = DiagnosisResult.createPending(memberId);
+            // 진단 생성 - PENDING 단계를 건너뛰고 바로 IN_PROGRESS로 생성
+            log.debug("[DiagnosisService.createNewDiagnosis] Creating new diagnosis with IN_PROGRESS status (skip PENDING)");
+            DiagnosisResult diagnosis = DiagnosisResult.builder()
+                    .memberId(memberId)
+                    .status(DiagnosisStatus.IN_PROGRESS)  // 바로 IN_PROGRESS 상태로 생성
+                    .resultData(null)
+                    .build();
 
-            log.debug("[DiagnosisService.createNewDiagnosis] Saving diagnosis entity to DB");
+            // saveAndFlush로 즉시 DB에 반영하여 race condition window 최소화
+            log.debug("[DiagnosisService.createNewDiagnosis] Saving diagnosis with flush to DB");
             long saveStartTime = System.currentTimeMillis();
-            DiagnosisResult saved = diagnosisResultRepository.save(diagnosis);
+            DiagnosisResult saved = diagnosisResultRepository.saveAndFlush(diagnosis);
             long saveDuration = System.currentTimeMillis() - saveStartTime;
-            log.debug("[DiagnosisService.createNewDiagnosis] Diagnosis saved in {}ms - diagnosisId: {}", saveDuration, saved.getId());
-
-            // 즉시 IN_PROGRESS로 전환하여 경쟁 조건 최소화
-            log.debug("[DiagnosisService.createNewDiagnosis] Transitioning diagnosis to IN_PROGRESS - diagnosisId: {}", saved.getId());
-            saved.startDiagnosis();
-            long transitionStartTime = System.currentTimeMillis();
-            diagnosisResultRepository.save(saved);
-            long transitionDuration = System.currentTimeMillis() - transitionStartTime;
-            log.debug("[DiagnosisService.createNewDiagnosis] Status transition saved in {}ms", transitionDuration);
+            log.debug("[DiagnosisService.createNewDiagnosis] Diagnosis saved and flushed in {}ms - diagnosisId: {}",
+                     saveDuration, saved.getId());
 
             long totalDuration = System.currentTimeMillis() - startTime;
             log.info("[DiagnosisService.createNewDiagnosis] EXIT - diagnosisId: {}, status: {}, totalDuration: {}ms",
@@ -355,6 +554,12 @@ public class DiagnosisService {
             log.warn("[DiagnosisService.createNewDiagnosis] EXCEPTION (AlreadyInProgress) - memberId: {}, duration: {}ms",
                 memberId, duration);
             throw e;
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // DB unique constraint 위반 - 동시 요청으로 중복 생성 시도
+            long duration = System.currentTimeMillis() - startTime;
+            log.warn("[DiagnosisService.createNewDiagnosis] DataIntegrityViolationException - concurrent creation detected for memberId: {}, duration: {}ms",
+                    memberId, duration, e);
+            throw new DiagnosisAlreadyInProgressException(memberId);
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             log.error("[DiagnosisService.createNewDiagnosis] EXCEPTION - memberId: {}, duration: {}ms, error: {}",
@@ -441,73 +646,6 @@ public class DiagnosisService {
         }
     }
 
-    /**
-     * 진단 상태를 업데이트합니다.
-     *
-     * @param diagnosisId 진단 ID
-     * @param status 진단 상태
-     */
-    @Transactional
-    public void updateDiagnosisStatus(Long diagnosisId, DiagnosisStatus status) {
-        log.info("[DiagnosisService.updateDiagnosisStatus] ENTER - diagnosisId: {}, targetStatus: {}", diagnosisId, status);
-        long startTime = System.currentTimeMillis();
-
-        try {
-            log.debug("[DiagnosisService.updateDiagnosisStatus] Fetching diagnosis from DB - diagnosisId: {}", diagnosisId);
-            DiagnosisResult diagnosisResult = diagnosisResultRepository.findById(diagnosisId)
-                    .orElseThrow(() -> {
-                        log.error("[DiagnosisService.updateDiagnosisStatus] Diagnosis not found - diagnosisId: {}", diagnosisId);
-                        return new IllegalArgumentException("진단 정보를 찾을 수 없습니다. diagnosisId: " + diagnosisId);
-                    });
-
-            DiagnosisStatus currentStatus = diagnosisResult.getStatus();
-            log.info("[DiagnosisService.updateDiagnosisStatus] Current status: {} -> Target status: {}", currentStatus, status);
-
-            // 상태 전이 메서드 사용 (도메인 로직 활용)
-            switch (status) {
-                case IN_PROGRESS -> {
-                    if (diagnosisResult.getStatus() == DiagnosisStatus.PENDING) {
-                        log.debug("[DiagnosisService.updateDiagnosisStatus] Transitioning PENDING -> IN_PROGRESS");
-                        diagnosisResult.startDiagnosis();
-                    } else if (diagnosisResult.getStatus() == DiagnosisStatus.AWAITING_USER_INPUT) {
-                        log.debug("[DiagnosisService.updateDiagnosisStatus] Transitioning AWAITING_USER_INPUT -> IN_PROGRESS (resume)");
-                        diagnosisResult.resumeDiagnosis();
-                    } else {
-                        log.warn("[DiagnosisService.updateDiagnosisStatus] Unexpected transition to IN_PROGRESS from status: {}", currentStatus);
-                    }
-                }
-                case AWAITING_USER_INPUT -> {
-                    log.debug("[DiagnosisService.updateDiagnosisStatus] Transitioning to AWAITING_USER_INPUT");
-                    diagnosisResult.awaitUserInput();
-                }
-                case FAILED -> {
-                    log.debug("[DiagnosisService.updateDiagnosisStatus] Transitioning to FAILED (manual)");
-                    diagnosisResult.failDiagnosis("Manual status update");
-                }
-                default -> log.warn("[DiagnosisService.updateDiagnosisStatus] Unexpected status transition to {} for diagnosisId: {}", status, diagnosisId);
-            }
-
-            log.debug("[DiagnosisService.updateDiagnosisStatus] Saving status change to DB");
-            long saveStartTime = System.currentTimeMillis();
-            diagnosisResultRepository.save(diagnosisResult);
-            long saveDuration = System.currentTimeMillis() - saveStartTime;
-
-            long totalDuration = System.currentTimeMillis() - startTime;
-            log.info("[DiagnosisService.updateDiagnosisStatus] EXIT - diagnosisId: {}, finalStatus: {}, saveDuration: {}ms, totalDuration: {}ms",
-                diagnosisId, diagnosisResult.getStatus(), saveDuration, totalDuration);
-
-        } catch (IllegalArgumentException e) {
-            long duration = System.currentTimeMillis() - startTime;
-            log.error("[DiagnosisService.updateDiagnosisStatus] EXCEPTION (IllegalArgument) - diagnosisId: {}, duration: {}ms, error: {}",
-                diagnosisId, duration, e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            long duration = System.currentTimeMillis() - startTime;
-            log.error("[DiagnosisService.updateDiagnosisStatus] EXCEPTION - diagnosisId: {}, duration: {}ms, error: {}",
-                diagnosisId, duration, e.getMessage(), e);
-            throw e;
-        }
-    }
 
     /**
      * 사용자 선택을 반영하여 진단을 비동기로 계속 진행합니다. (SSE 지원)

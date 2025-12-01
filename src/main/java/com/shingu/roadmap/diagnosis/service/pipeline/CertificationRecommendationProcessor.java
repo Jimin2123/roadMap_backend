@@ -71,7 +71,7 @@ public class CertificationRecommendationProcessor implements DiagnosisProcessor 
             List<CertificationRecommendationResponse> certificationRecommendations =
                     certificationRecommendationWorkflow
                             .recommendCertifications(context.getProfile(), targetNcsCode, targetKsaAnalysis)
-                            .block(); // 동기 처리 (파이프라인 순차 실행)
+                            .block(java.time.Duration.ofSeconds(90)); // Timeout: 90s for Q-Net API + AI analysis
 
             if (certificationRecommendations == null || certificationRecommendations.isEmpty()) {
                 log.warn("[CertificationRecommendationProcessor] No certification recommendations generated");

@@ -2,6 +2,7 @@ package com.shingu.roadmap.diagnosis.service.pipeline;
 
 import com.shingu.roadmap.apis.openai.service.workflow.JobRecommendationWorkflow;
 import com.shingu.roadmap.diagnosis.dto.response.JobRecommendationResponse;
+import com.shingu.roadmap.diagnosis.dto.response.KsaAnalysisResponse;
 import com.shingu.roadmap.diagnosis.dto.response.NcsAnalysisResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,8 +15,14 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 채용공고 추천 프로세서
- * 사용자 프로필과 추천된 NCS 코드를 기반으로 적합한 채용공고를 추천합니다.
+ * AI 기반 채용공고 추천 프로세서
+ * 사용자 프로필, 경력, 학력, KSA 분석 결과를 종합하여 OpenAI가 적합한 채용공고를 추천합니다.
+ *
+ * 핵심 기능:
+ * - 페이지네이션을 통한 여러 페이지 탐색
+ * - OpenAI를 활용한 AI 기반 매칭 점수 산출
+ * - 최소 매칭 점수(65점) 이상 공고만 수집
+ * - 맞춤형 추천 이유 생성
  */
 @Component
 @RequiredArgsConstructor
@@ -49,10 +56,22 @@ public class JobRecommendationProcessor implements DiagnosisProcessor {
 
             log.info("[JobRecommendationProcessor] Target NCS code for job recommendation: {}", targetNcsCode);
 
-            // 3. 채용공고 추천 워크플로우 실행
+            // 3. 해당 NCS 코드에 대한 KSA 분석 결과 찾기
+            KsaAnalysisResponse targetKsaAnalysis = null;
+            if (context.getKsaAnalysisResponses() != null && !context.getKsaAnalysisResponses().isEmpty()) {
+                targetKsaAnalysis = context.getKsaAnalysisResponses().stream()
+                        .filter(ksa -> ksa.ncsCode().equals(targetNcsCode))
+                        .findFirst()
+                        .orElse(context.getKsaAnalysisResponses().get(0)); // 폴백: 첫 번째 KSA 분석 결과 사용
+
+                log.info("[JobRecommendationProcessor] Using KSA analysis for NCS code: {}",
+                        targetKsaAnalysis != null ? targetKsaAnalysis.ncsCode() : "none");
+            }
+
+            // 4. AI 기반 채용공고 추천 워크플로우 실행 (KSA 분석 결과 포함)
             List<JobRecommendationResponse> jobRecommendations = jobRecommendationWorkflow
-                    .recommendJobs(context.getProfile(), targetNcsCode)
-                    .block(); // 동기 처리 (파이프라인 순차 실행)
+                    .recommendJobs(context.getProfile(), targetNcsCode, targetKsaAnalysis)
+                    .block(java.time.Duration.ofMinutes(3)); // Timeout: 3min for Saramin API pagination + AI filtering
 
             if (jobRecommendations == null || jobRecommendations.isEmpty()) {
                 log.warn("[JobRecommendationProcessor] No job recommendations generated");

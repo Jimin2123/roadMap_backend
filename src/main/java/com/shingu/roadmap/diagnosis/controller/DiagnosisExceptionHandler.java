@@ -25,11 +25,7 @@ import java.util.stream.Collectors;
  *   <li>DiagnosisNotFoundException - 404 Not Found</li>
  *   <li>DiagnosisAccessDeniedException - 403 Forbidden</li>
  *   <li>DiagnosisAlreadyInProgressException - 409 Conflict</li>
- *   <li>DiagnosisInvalidStateException - 400 Bad Request</li>
- *   <li>DiagnosisTimeoutException - 408 Request Timeout</li>
- *   <li>DiagnosisProcessingException - 500 Internal Server Error</li>
  *   <li>ProfileNotFoundException - 400 Bad Request</li>
- *   <li>ExternalApiException - 502 Bad Gateway</li>
  *   <li>MethodArgumentNotValidException - 400 Bad Request (Validation)</li>
  *   <li>IllegalArgumentException - 400 Bad Request</li>
  *   <li>IllegalStateException - 409 Conflict</li>
@@ -103,68 +99,6 @@ public class DiagnosisExceptionHandler {
                 .body(errorResponse);
     }
 
-    /**
-     * 진단 상태가 유효하지 않은 경우
-     */
-    @ExceptionHandler(DiagnosisInvalidStateException.class)
-    public ResponseEntity<ErrorResponse> handleDiagnosisInvalidStateException(
-            DiagnosisInvalidStateException ex,
-            HttpServletRequest request
-    ) {
-        log.warn("Diagnosis invalid state: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                ex.getErrorCode(),
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(errorResponse);
-    }
-
-    /**
-     * 진단 타임아웃 발생 시
-     */
-    @ExceptionHandler(DiagnosisTimeoutException.class)
-    public ResponseEntity<ErrorResponse> handleDiagnosisTimeoutException(
-            DiagnosisTimeoutException ex,
-            HttpServletRequest request
-    ) {
-        log.warn("Diagnosis timeout: {}", ex.getMessage());
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                ex.getErrorCode(),
-                ex.getMessage(),
-                request.getRequestURI()
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.REQUEST_TIMEOUT)
-                .body(errorResponse);
-    }
-
-    /**
-     * 진단 처리 중 오류 발생 시
-     */
-    @ExceptionHandler(DiagnosisProcessingException.class)
-    public ResponseEntity<ErrorResponse> handleDiagnosisProcessingException(
-            DiagnosisProcessingException ex,
-            HttpServletRequest request
-    ) {
-        log.error("Diagnosis processing error: {}", ex.getMessage(), ex);
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                ex.getErrorCode(),
-                "진단 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-                request.getRequestURI()
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(errorResponse);
-    }
 
     /**
      * 프로필을 찾을 수 없는 경우
@@ -187,26 +121,6 @@ public class DiagnosisExceptionHandler {
                 .body(errorResponse);
     }
 
-    /**
-     * 외부 API 오류 발생 시
-     */
-    @ExceptionHandler(ExternalApiException.class)
-    public ResponseEntity<ErrorResponse> handleExternalApiException(
-            ExternalApiException ex,
-            HttpServletRequest request
-    ) {
-        log.error("External API error: {}", ex.getMessage(), ex);
-
-        ErrorResponse errorResponse = ErrorResponse.of(
-                ex.getErrorCode(),
-                "외부 서비스 연동 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
-                request.getRequestURI()
-        );
-
-        return ResponseEntity
-                .status(HttpStatus.BAD_GATEWAY)
-                .body(errorResponse);
-    }
 
     /**
      * Bean Validation 실패 시

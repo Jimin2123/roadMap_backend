@@ -4,11 +4,13 @@ import com.shingu.roadmap.apis.saramin.config.SaraminApiProperties;
 import com.shingu.roadmap.apis.saramin.domain.SaraminRegion;
 import com.shingu.roadmap.apis.saramin.dto.response.SaraminJobListResponse;
 import com.shingu.roadmap.common.enums.EducationLevelType;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -20,6 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
+@Slf4j
 public class SaraminClient {
   private SaraminApiProperties properties;
   private final RestClient restClient;
@@ -44,9 +47,7 @@ public class SaraminClient {
 //      builder.queryParam("keywords", keyword);
 //    }
 
-    if(page > 0) {
-      builder.queryParam("start", page); // 페이지 시작 위치
-    }
+    builder.queryParam("start", page); // 페이지 시작 위치 (0부터 명시)
 
     if(groupCodes != null && !groupCodes.isEmpty()) {
       builder.queryParam("job_mid_cd", String.join(",", groupCodes.stream().map(String::valueOf).toList()));
@@ -78,8 +79,19 @@ public class SaraminClient {
             .body(SaraminJobListResponse.class);
   }
 
+  /**
+   * 회사 로고 URL 조회 (캐싱 적용)
+   *
+   * 캐시 키: 회사 URL
+   * TTL: 24시간 (application.yml 설정) - 로고는 자주 변경되지 않음
+   *
+   * @param url 회사 상세 페이지 URL
+   * @return OpenGraph 이미지 URL (로고), 없으면 null
+   */
+  @Cacheable(value = "saraminCompanyLogo", key = "#url", unless = "#result == null")
   public String getCompanyLogo(String url) {
     try {
+      log.debug("Fetching company logo from URL: {}", url);
       Connection.Response res = Jsoup.connect(url)
               .header("Range", "bytes=0-16383") // 16 KB
               .ignoreContentType(true)
@@ -91,6 +103,7 @@ public class SaraminClient {
       String htmlHead = res.body().split("</head>", 2)[0] + "</head>";
       return extractOgImage(htmlHead);
     } catch (Exception ex) {
+      log.warn("Failed to fetch company logo from {}: {}", url, ex.getMessage());
       return null;
     }
   }
